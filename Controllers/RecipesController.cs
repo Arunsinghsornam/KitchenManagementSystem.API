@@ -1,27 +1,35 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
+
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class RecipesController : ControllerBase
 {
     private readonly AppDbContext _db;
+
     private static readonly Guid DefaultOutletId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public RecipesController(AppDbContext db) => _db = db;
+    public RecipesController(AppDbContext db)
+    {
+        _db = db;
+    }
 
-    // GET api/recipes — all menu items with ingredients and cost
+    // GET api/recipes
     [HttpGet]
+    [Authorize(Policy = "RecipeAccess")]
     public async Task<IActionResult> GetAll()
     {
         var items = await _db.MenuItems
             .Where(m =>
-    m.OutletId == DefaultOutletId &&
-    m.Active)
+                m.OutletId == DefaultOutletId &&
+                m.Active)
             .OrderBy(m => m.Name)
             .Select(m => new
             {
@@ -50,14 +58,13 @@ public class RecipesController : ControllerBase
         return Ok(items);
     }
 
-    // POST api/recipes — create menu item + ingredients
+    // POST api/recipes
     [HttpPost]
+    [Authorize(Policy = "RecipeAccess")]
     public async Task<IActionResult> Create([FromBody] CreateRecipeDto dto)
     {
         if (!ModelState.IsValid)
-        {
             return BadRequest(ModelState);
-        }
 
         try
         {
@@ -102,7 +109,7 @@ public class RecipesController : ControllerBase
                 message = "Duplicate ingredients are not allowed."
             });
         }
-        catch (Exception)
+        catch
         {
             return BadRequest(new
             {
@@ -111,15 +118,13 @@ public class RecipesController : ControllerBase
         }
     }
 
-    // PUT api/recipes/{id} — update menu item + replace ingredients
+    // PUT api/recipes/{id}
     [HttpPut("{id}")]
+    [Authorize(Policy = "RecipeAccess")]
     public async Task<IActionResult> Update(Guid id, [FromBody] CreateRecipeDto dto)
     {
-        // ADD THIS
         if (!ModelState.IsValid)
-        {
             return BadRequest(ModelState);
-        }
 
         try
         {
@@ -160,7 +165,7 @@ public class RecipesController : ControllerBase
                 message = "Duplicate ingredients are not allowed."
             });
         }
-        catch (Exception)
+        catch
         {
             return BadRequest(new
             {
@@ -168,8 +173,10 @@ public class RecipesController : ControllerBase
             });
         }
     }
-    // DELETE api/recipes/{id} — delete menu item
+
+    // DELETE api/recipes/{id}
     [HttpDelete("{id}")]
+    [Authorize(Policy = "RecipeAccess")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var menuItem = await _db.MenuItems

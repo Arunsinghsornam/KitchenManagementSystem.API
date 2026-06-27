@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
 
@@ -7,13 +8,13 @@ namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class PurchasesController : ControllerBase
 {
     private readonly AppDbContext _db;
 
-
-private static readonly Guid DefaultOutletId =
-    Guid.Parse("00000000-0000-0000-0000-000000000001");
+    private static readonly Guid DefaultOutletId =
+        Guid.Parse("00000000-0000-0000-0000-000000000001");
 
     public PurchasesController(AppDbContext db)
     {
@@ -22,6 +23,7 @@ private static readonly Guid DefaultOutletId =
 
     // GET api/purchases
     [HttpGet]
+    [Authorize(Policy = "Manager")]
     public async Task<IActionResult> GetAll()
     {
         var purchases = await _db.Purchases
@@ -45,6 +47,7 @@ private static readonly Guid DefaultOutletId =
 
     // POST api/purchases
     [HttpPost]
+    [Authorize(Policy = "Manager")]
     public async Task<IActionResult> Create([FromBody] CreatePurchaseDto dto)
     {
         if (dto.Items == null || !dto.Items.Any())
@@ -96,14 +99,11 @@ private static readonly Guid DefaultOutletId =
 
             if (rawMaterial == null)
             {
-                Console.WriteLine(
-                    $"RawMaterial not found: {item.RawMaterialId}");
-
+                Console.WriteLine($"RawMaterial not found: {item.RawMaterialId}");
                 continue;
             }
 
-            Console.WriteLine(
-                $"Updating cost for {rawMaterial.Name} -> {item.UnitCost}");
+            Console.WriteLine($"Updating cost for {rawMaterial.Name} -> {item.UnitCost}");
 
             var oldStock = rawMaterial.CurrentStock;
             var oldCost = rawMaterial.AverageCost;
@@ -127,34 +127,26 @@ private static readonly Guid DefaultOutletId =
             message = "Purchase recorded successfully. Stock and average cost updated."
         });
     }
-
-
 }
 
 public class CreatePurchaseDto
 {
     public Guid SupplierId { get; set; }
 
-
-public string? InvoiceNumber { get; set; }
+    public string? InvoiceNumber { get; set; }
 
     public DateOnly PurchaseDate { get; set; }
 
     public List<PurchaseLineDto> Items { get; set; } = [];
-
-
 }
 
 public class PurchaseLineDto
 {
     public Guid RawMaterialId { get; set; }
 
-
-public decimal Quantity { get; set; }
+    public decimal Quantity { get; set; }
 
     public decimal UnitCost { get; set; }
 
     public decimal GstPercent { get; set; }
-
-
 }

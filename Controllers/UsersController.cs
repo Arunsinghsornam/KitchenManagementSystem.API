@@ -25,26 +25,19 @@ public class UsersController : ControllerBase
     /// StoreManager: returns only users belonging to their outlet.
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = "Manager")] // super_admin + store_manager
+    [Authorize(Policy = "SuperAdmin")]// super_admin + store_manager
     public async Task<IActionResult> GetAll()
     {
-        Guid? filterOutlet = null;
+      
 
         // Store managers see only their outlet's users
-        if (!User.IsInRole("super_admin"))
-        {
-            var outletClaim = User.FindFirstValue("outletId");
-            if (Guid.TryParse(outletClaim, out var outletId))
-                filterOutlet = outletId;
-        }
-
-        var users = await _users.GetAllAsync(filterOutlet);
+        var users = await _users.GetAllAsync(null);
         return Ok(ApiResponse<IEnumerable<UserResponseDto>>.Ok(users));
     }
 
     // ── GET /api/users/{id} ───────────────────────────────────────────────────
     [HttpGet("{id:guid}")]
-    [Authorize(Policy = "Manager")]
+    [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> GetById(Guid id)
     {
         var user = await _users.GetByIdAsync(id);
@@ -59,7 +52,7 @@ public class UsersController : ControllerBase
     /// StoreManager can only create staff for their own outlet.
     /// </summary>
     [HttpPost]
-    [Authorize(Policy = "Manager")]
+    [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
     {
         if (!ModelState.IsValid)
@@ -68,11 +61,7 @@ public class UsersController : ControllerBase
                 ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
 
         // Only super_admin can create another super_admin or store_manager
-        if ((dto.Role == "super_admin" || dto.Role == "store_manager")
-            && !User.IsInRole("super_admin"))
-        {
-            return Forbid();
-        }
+       
 
         // Prevent email duplicates
         if (await _users.ExistsAsync(dto.Email))
@@ -99,12 +88,10 @@ public class UsersController : ControllerBase
     /// Does NOT change the password — use /api/auth/change-password for that.
     /// </summary>
     [HttpPut("{id:guid}")]
-    [Authorize(Policy = "Manager")]
+    [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
     {
-        // A store_manager cannot promote anyone to super_admin
-        if (dto.Role is "super_admin" && !User.IsInRole("super_admin"))
-            return Forbid();
+        
 
         try
         {

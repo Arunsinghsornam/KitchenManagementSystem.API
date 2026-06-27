@@ -1,11 +1,14 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using KitchenManagementSystem.API.Data;
+﻿using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class InventoryController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -15,6 +18,7 @@ public class InventoryController : ControllerBase
 
     // GET api/inventory — list all raw materials
     [HttpGet]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> GetAll()
     {
         var materials = await _db.RawMaterials
@@ -38,6 +42,7 @@ public class InventoryController : ControllerBase
 
     // POST api/inventory — add new raw material
     [HttpPost]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> Create([FromBody] RawMaterial material)
     {
         material.Id = Guid.NewGuid();
@@ -50,6 +55,7 @@ public class InventoryController : ControllerBase
 
     // PUT api/inventory/{id} — update raw material
     [HttpPut("{id}")]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> Update(Guid id, [FromBody] RawMaterial updated)
     {
         var material = await _db.RawMaterials.FindAsync(id);
@@ -67,6 +73,7 @@ public class InventoryController : ControllerBase
 
     // DELETE api/inventory/{id} — delete raw material
     [HttpDelete("{id}")]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var material = await _db.RawMaterials.FindAsync(id);
@@ -78,6 +85,7 @@ public class InventoryController : ControllerBase
 
     // POST api/inventory/{id}/adjust — manually adjust stock
     [HttpPost("{id}/adjust")]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> Adjust(Guid id, [FromBody] AdjustStockDto dto)
     {
         var material = await _db.RawMaterials.FindAsync(id);
@@ -130,6 +138,7 @@ if (material == null)
 
     // GET api/inventory/categories — list all categories
     [HttpGet("categories")]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> GetCategories()
     {
         var cats = await _db.Categories
@@ -141,6 +150,7 @@ if (material == null)
 
     // POST api/inventory/categories — add category
     [HttpPost("categories")]
+    [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> CreateCategory([FromBody] Category cat)
     {
         cat.Id = Guid.NewGuid();

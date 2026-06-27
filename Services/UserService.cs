@@ -21,12 +21,21 @@ public class UserService : IUserService
 
     public async Task<IEnumerable<UserResponseDto>> GetAllAsync(Guid? outletId = null)
     {
-        var query = _db.Users
+        var users = await _db.Users
             .Include(u => u.Outlet)
-            .Where(u => !outletId.HasValue || u.OutletId == outletId)
-            .OrderBy(u => u.FullName);
+            .Where(u =>
+                u.IsActive &&
+                (!outletId.HasValue || u.OutletId == outletId))
+            .OrderBy(u => u.FullName)
+            .ToListAsync();
 
-        return await query.Select(u => ToDto(u)).ToListAsync();
+        Console.WriteLine("===== USERS RETURNED =====");
+        foreach (var u in users)
+        {
+            Console.WriteLine($"{u.FullName} - Active: {u.IsActive}");
+        }
+
+        return users.Select(ToDto);
     }
 
     public async Task<UserResponseDto?> GetByIdAsync(Guid id)

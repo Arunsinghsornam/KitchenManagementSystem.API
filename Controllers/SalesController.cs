@@ -1,18 +1,26 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
+
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize(Policy = "StoreOperations")]
 public class SalesController : ControllerBase
 {
     private readonly AppDbContext _db;
+
     private static readonly Guid DefaultOutletId =
         Guid.Parse("00000000-0000-0000-0000-000000000001");
 
-    public SalesController(AppDbContext db) => _db = db;
+    public SalesController(AppDbContext db)
+    {
+        _db = db;
+    }
 
     // GET api/sales — list recent sales
     [HttpGet]
@@ -32,13 +40,15 @@ public class SalesController : ControllerBase
                 s.Total
             })
             .ToListAsync();
+
         return Ok(sales);
     }
 
-    // GET api/sales/stock-check — check if stock is enough before saving
+    // GET api/sales/stock-check
     [HttpGet("stock-check")]
-    public async Task<IActionResult> StockCheck([FromQuery] Guid menuItemId,
-                                                [FromQuery] decimal quantity)
+    public async Task<IActionResult> StockCheck(
+        [FromQuery] Guid menuItemId,
+        [FromQuery] decimal quantity)
     {
         var ingredients = await _db.RecipeIngredients
             .Where(r => r.MenuItemId == menuItemId)
@@ -56,10 +66,14 @@ public class SalesController : ControllerBase
             })
             .ToList();
 
-        return Ok(new { hasShortage = shortages.Any(), shortages });
+        return Ok(new
+        {
+            hasShortage = shortages.Any(),
+            shortages
+        });
     }
 
-    // POST api/sales — record a new sale
+    // POST api/sales
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] CreateSaleDto dto)
     {
@@ -67,7 +81,6 @@ public class SalesController : ControllerBase
         {
             return BadRequest(ModelState);
         }
-
 
         try
         {
@@ -168,23 +181,26 @@ public class SalesController : ControllerBase
                 message = "Unexpected error occurred while saving sale."
             });
         }
-
-
     }
-
 
     public class CreateSaleDto
     {
         public DateOnly SaleDate { get; set; }
+
         public string Channel { get; set; } = "OUTLET";
+
         public decimal Discount { get; set; }
+
         public List<SaleLineDto> Items { get; set; } = [];
     }
 
     public class SaleLineDto
     {
         public Guid MenuItemId { get; set; }
+
         public decimal Quantity { get; set; }
+
         public decimal UnitPrice { get; set; }
     }
 }
+

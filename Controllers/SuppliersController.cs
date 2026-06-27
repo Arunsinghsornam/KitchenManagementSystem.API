@@ -1,12 +1,14 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using KitchenManagementSystem.API.Data;
+﻿using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
+[Authorize]
 public class SuppliersController : ControllerBase
 {
     private readonly AppDbContext _db;
@@ -21,6 +23,7 @@ public class SuppliersController : ControllerBase
 
     // GET api/suppliers
     [HttpGet]
+    [Authorize(Policy = "StoreOperations")]
     public async Task<IActionResult> GetAll()
     {
         var suppliers = await _db.Suppliers
@@ -33,6 +36,7 @@ public class SuppliersController : ControllerBase
 
     // POST api/suppliers
     [HttpPost]
+    [Authorize(Policy = "StoreOperations")]
     public async Task<IActionResult> Create([FromBody] Supplier supplier)
     {
         try
@@ -62,6 +66,7 @@ public class SuppliersController : ControllerBase
 
     // PUT api/suppliers/{id}
     [HttpPut("{id}")]
+    [Authorize(Policy = "StoreOperations")]
     public async Task<IActionResult> Update(Guid id, [FromBody] Supplier updated)
     {
         var supplier = await _db.Suppliers.FindAsync(id);
@@ -84,6 +89,7 @@ public class SuppliersController : ControllerBase
 
     // DELETE api/suppliers/{id}
     [HttpDelete("{id}")]
+    [Authorize(Policy = "StoreOperations")]
     public async Task<IActionResult> Delete(Guid id)
     {
         var supplier = await _db.Suppliers.FindAsync(id);

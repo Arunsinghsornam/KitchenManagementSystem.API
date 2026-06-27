@@ -35,12 +35,53 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
     });
 
 // 3. Authorization policies
+// 3. Authorization policies
 builder.Services.AddAuthorization(options =>
 {
-    options.AddPolicy("SuperAdmin", p => p.RequireRole("super_admin"));
-    options.AddPolicy("Manager", p => p.RequireRole("super_admin", "store_manager"));
-    options.AddPolicy("AnyStaff", p => p.RequireRole("super_admin", "store_manager",
-                                                         "kitchen_staff", "accountant"));
+    // Super Admin only
+    options.AddPolicy("SuperAdmin",
+        p => p.RequireRole("super_admin"));
+
+    // Super Admin + Store Manager
+    options.AddPolicy("Manager",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager"));
+
+    // Dashboard (all authenticated users)
+    options.AddPolicy("AnyStaff",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager",
+            "accountant",
+            "kitchen_staff"));
+
+    // Inventory
+    options.AddPolicy("InventoryAccess",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager",
+            "kitchen_staff"));
+
+    // Recipes
+    options.AddPolicy("RecipeAccess",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager",
+            "kitchen_staff"));
+
+    // Suppliers + Purchases + Sales
+    options.AddPolicy("StoreOperations",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager"));
+
+    // Profit & Loss
+    options.AddPolicy("PLAccess",
+        p => p.RequireRole(
+            "super_admin",
+            "store_manager",
+            "accountant"));
 });
 
 // 4. Controllers + Swagger
