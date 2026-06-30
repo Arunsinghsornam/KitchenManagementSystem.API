@@ -1,4 +1,4 @@
-﻿namespace KitchenManagementSystem.API.Models;
+namespace KitchenManagementSystem.API.Models;
 
 public class Purchase
 {
@@ -14,5 +14,6 @@ public class Purchase
     public DateTimeOffset CreatedAt { get; set; }
 
     public Supplier Supplier { get; set; } = null!;
+    public Outlet Outlet { get; set; } = null!;
     public ICollection<PurchaseItem> Items { get; set; } = [];
 }

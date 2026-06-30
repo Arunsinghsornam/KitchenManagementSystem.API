@@ -38,20 +38,22 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 // 3. Authorization policies
 builder.Services.AddAuthorization(options =>
 {
-    // Super Admin only
+    // Super Admin / Power Admin only
     options.AddPolicy("SuperAdmin",
-        p => p.RequireRole("super_admin"));
+        p => p.RequireRole("super_admin", "power_admin"));
 
-    // Super Admin + Store Manager
+    // Super Admin + Power Admin + Store Manager
     options.AddPolicy("Manager",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager"));
 
     // Dashboard (all authenticated users)
     options.AddPolicy("AnyStaff",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager",
             "accountant",
             "kitchen_staff"));
@@ -60,6 +62,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("InventoryAccess",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager",
             "kitchen_staff"));
 
@@ -67,6 +70,7 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("RecipeAccess",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager",
             "kitchen_staff"));
 
@@ -74,12 +78,14 @@ builder.Services.AddAuthorization(options =>
     options.AddPolicy("StoreOperations",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager"));
 
     // Profit & Loss
     options.AddPolicy("PLAccess",
         p => p.RequireRole(
             "super_admin",
+            "power_admin",
             "store_manager",
             "accountant"));
 });
@@ -100,6 +106,14 @@ builder.Services.AddCors(options =>
 builder.Services.AddScoped<IPLReportService, PLReportService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
+builder.Services.AddScoped<IOutletService, OutletService>();
+builder.Services.AddScoped<ICategoryService, CategoryService>();
+builder.Services.AddScoped<IInventoryService, InventoryService>();
+builder.Services.AddScoped<ISupplierService, SupplierService>();
+builder.Services.AddScoped<IPurchaseService, PurchaseService>();
+builder.Services.AddScoped<IRecipeService, RecipeService>();
+builder.Services.AddScoped<ISalesService, SalesService>();
+builder.Services.AddScoped<IDashboardService, DashboardService>();
 
 var app = builder.Build();
 

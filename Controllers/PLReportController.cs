@@ -1,18 +1,24 @@
-﻿using KitchenManagementSystem.API.Services;
+using KitchenManagementSystem.API.Services;
+using KitchenManagementSystem.API.Data;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class PLReportController : ControllerBase
+[Authorize(Policy = "Manager")]
+public class PLReportController : BaseApiController
 {
     private readonly IPLReportService _service;
+    private readonly AppDbContext _db;
 
     public PLReportController(
-        IPLReportService service)
+        IPLReportService service,
+        AppDbContext db)
     {
         _service = service;
+        _db = db;
     }
 
     [HttpGet]
@@ -21,6 +27,15 @@ public class PLReportController : ControllerBase
         DateTime dateFrom,
         DateTime dateTo)
     {
+        try
+        {
+            await ValidateOutletAccessAsync(outletId, _db);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+
         var result =
             await _service.GetReport(
                 outletId,

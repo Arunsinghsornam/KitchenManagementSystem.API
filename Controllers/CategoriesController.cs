@@ -1,128 +1,123 @@
-﻿using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using KitchenManagementSystem.API.Data;
+using Microsoft.AspNetCore.Mvc;
+using KitchenManagementSystem.API.DTOs;
 using KitchenManagementSystem.API.Models;
+using KitchenManagementSystem.API.Services;
+using KitchenManagementSystem.API.Data;
+using Microsoft.AspNetCore.Authorization;
+using System;
+using System.Threading.Tasks;
+using System.Collections.Generic;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class CategoriesController : ControllerBase
+[Authorize(Policy = "AnyStaff")]
+public class CategoriesController : BaseApiController
 {
+    private readonly ICategoryService _service;
     private readonly AppDbContext _db;
 
-
-private static readonly Guid DefaultOutletId =
-    Guid.Parse("00000000-0000-0000-0000-000000000001");
-
-    public CategoriesController(AppDbContext db)
+    public CategoriesController(ICategoryService service, AppDbContext db)
     {
+        _service = service;
         _db = db;
     }
 
-    // GET api/categories
+    // GET: api/categories
     [HttpGet]
     public async Task<IActionResult> GetAll()
     {
-        var categories = await _db.Categories
-            .Where(x => x.OutletId == DefaultOutletId)
-            .OrderBy(x => x.Name)
-            .ToListAsync();
-
+        var orgId = IsPowerAdmin() ? null : GetOrganizationIdOrNull();
+        var categories = await _service.GetAllAsync(orgId);
         return Ok(categories);
     }
 
-    // POST api/categories
+    // POST: api/categories
     [HttpPost]
-    public async Task<IActionResult> Create(Category category)
+    public async Task<IActionResult> Create(CreateCategoryDto dto)
     {
-        category.Name = category.Name.Trim();
-
-        bool exists = await _db.Categories.AnyAsync(x =>
-            x.OutletId == DefaultOutletId &&
-            x.Name.Trim().ToLower() == category.Name.ToLower());
-
-        if (exists)
+        try
         {
-            return BadRequest(new
-            {
-                message = "Category already exists"
-            });
+            await ValidateOutletAccessAsync(dto.OutletId, _db);
+            var category = await _service.CreateAsync(dto);
+            return Ok(category);
         }
-
-        category.Id = Guid.NewGuid();
-        category.OutletId = DefaultOutletId;
-        category.CreatedAt = DateTimeOffset.UtcNow;
-
-        category.Outlet = null!;
-
-        _db.Categories.Add(category);
-
-        await _db.SaveChangesAsync();
-
-        return Ok(category);
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
-    // PUT api/categories/{id}
+    // PUT: api/categories/{id}
     [HttpPut("{id}")]
-    public async Task<IActionResult> Update(Guid id, Category updated)
+    public async Task<IActionResult> Update(Guid id, UpdateCategoryDto dto)
     {
-        var category = await _db.Categories.FindAsync(id);
-
-        if (category == null)
-            return NotFound();
-
-        updated.Name = updated.Name.Trim();
-
-        bool exists = await _db.Categories.AnyAsync(x =>
-            x.Id != id &&
-            x.OutletId == DefaultOutletId &&
-            x.Name.Trim().ToLower() == updated.Name.ToLower());
-
-        if (exists)
+        try
         {
-            return BadRequest(new
-            {
-                message = "Category already exists"
-            });
+            await ValidateOutletAccessAsync(dto.OutletId, _db);
+            var category = await _service.UpdateAsync(id, dto);
+            if (category == null)
+                return NotFound();
+
+            return Ok(category);
         }
-
-        category.Name = updated.Name;
-
-        await _db.SaveChangesAsync();
-
-        return Ok(category);
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
-    // DELETE api/categories/{id}
+    // DELETE: api/categories/{id}
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var category = await _db.Categories.FindAsync(id);
-
-        if (category == null)
-            return NotFound();
-
-        bool isUsed = await _db.RawMaterials
-            .AnyAsync(r => r.CategoryId == id);
-
-        if (isUsed)
+        try
         {
-            return BadRequest(new
+            // For safety, load category and validate outlet access
+            var category = await _db.Categories.FindAsync(id);
+            if (category != null)
             {
-                message = "Cannot delete category because it is used by raw materials."
-            });
+                await ValidateOutletAccessAsync(category.OutletId, _db);
+            }
+
+            var deleted = await _service.DeleteAsync(id);
+            if (!deleted)
+                return NotFound();
+
+            return Ok(new { message = "Category deleted successfully." });
         }
-
-        _db.Categories.Remove(category);
-
-        await _db.SaveChangesAsync();
-
-        return Ok(new
+        catch (UnauthorizedAccessException ex)
         {
-            message = "Deleted successfully"
-        });
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
-
-
 }

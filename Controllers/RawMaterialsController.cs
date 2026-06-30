@@ -1,42 +1,49 @@
-﻿namespace KitchenManagementSystem.API.Controllers;
-
-using global::KitchenManagementSystem.API.Data;
-using global::KitchenManagementSystem.API.Models;
-using KitchenManagementSystem.API.Data;
+using System;
+using System.Threading.Tasks;
 using KitchenManagementSystem.API.Models;
+using KitchenManagementSystem.API.Services;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.Authorization;
 
+namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class RawMaterialsController : ControllerBase
+[Authorize]
+public class RawMaterialsController : BaseApiController
 {
-    private readonly AppDbContext _db;
+    private readonly IInventoryService _service;
 
-    private static readonly Guid DefaultOutletId =
-        Guid.Parse("00000000-0000-0000-0000-000000000001");
-
-    public RawMaterialsController(AppDbContext db)
+    public RawMaterialsController(IInventoryService service)
     {
-        _db = db;
+        _service = service;
     }
 
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId)
     {
-        var items = await _db.RawMaterials
-            .Where(x => x.OutletId == DefaultOutletId)
-            .OrderBy(x => x.Name)
-            .ToListAsync();
+        Guid finalOutletId;
+        if (IsSuperAdmin())
+        {
+            if (outletId == null || outletId == Guid.Empty)
+            {
+                return BadRequest(new { message = "Please select an outlet." });
+            }
+            finalOutletId = outletId.Value;
+        }
+        else
+        {
+            finalOutletId = GetOutletId();
+        }
 
+        var items = await _service.GetAllRawMaterialsAsync(finalOutletId);
         return Ok(items);
     }
 
     [HttpGet("{id}")]
     public async Task<IActionResult> Get(Guid id)
     {
-        var item = await _db.RawMaterials.FindAsync(id);
+        var item = await _service.GetRawMaterialByIdAsync(id);
 
         if (item == null)
             return NotFound();
@@ -47,56 +54,41 @@ public class RawMaterialsController : ControllerBase
     [HttpPost]
     public async Task<IActionResult> Create([FromBody] RawMaterial material)
     {
-        material.Id = Guid.NewGuid();
-        material.OutletId = DefaultOutletId;
-        material.CreatedAt = DateTimeOffset.UtcNow;
+        Guid outletId;
+        if (IsSuperAdmin())
+        {
+            if (material.OutletId == Guid.Empty)
+                return BadRequest(new { message = "Please select an outlet." });
+            outletId = material.OutletId;
+        }
+        else
+        {
+            outletId = GetOutletId();
+        }
 
-        material.Outlet = null!;
-
-        _db.RawMaterials.Add(material);
-
-        await _db.SaveChangesAsync();
-
-        return Ok(material);
+        var created = await _service.CreateRawMaterialAsync(outletId, material);
+        return Ok(created);
     }
 
     [HttpPut("{id}")]
     public async Task<IActionResult> Update(Guid id, [FromBody] RawMaterial updated)
     {
-        var material = await _db.RawMaterials.FindAsync(id);
+        var result = await _service.UpdateRawMaterialAsync(id, updated);
 
-        if (material == null)
+        if (result == null)
             return NotFound();
 
-        material.Code = updated.Code;
-        material.Name = updated.Name;
-        material.Unit = updated.Unit;
-        material.ReorderLevel = updated.ReorderLevel;
-        material.CurrentStock = updated.CurrentStock;
-        material.AverageCost = updated.AverageCost;
-        material.TrackExpiry = updated.TrackExpiry;
-        material.CategoryId = updated.CategoryId;
-
-        await _db.SaveChangesAsync();
-
-        return Ok(material);
+        return Ok(result);
     }
 
     [HttpDelete("{id}")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var material = await _db.RawMaterials.FindAsync(id);
+        var deleted = await _service.DeleteRawMaterialAsync(id);
 
-        if (material == null)
+        if (!deleted)
             return NotFound();
 
-        _db.RawMaterials.Remove(material);
-
-        await _db.SaveChangesAsync();
-
-        return Ok(new
-        {
-            message = "Deleted successfully"
-        });
+        return Ok(new { message = "Deleted successfully" });
     }
 }

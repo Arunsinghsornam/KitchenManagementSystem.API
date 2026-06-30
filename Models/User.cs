@@ -14,6 +14,9 @@ public class User
     public Guid? OutletId { get; set; }
     public Outlet? Outlet { get; set; }
 
+    public Guid? OrganizationId { get; set; }
+    public Organization? Organization { get; set; }
+
     public string Email { get; set; } = default!;
 
     /// <summary> BCrypt hash — NEVER store plain-text here. </summary>

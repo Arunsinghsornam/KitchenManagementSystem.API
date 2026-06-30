@@ -1,90 +1,138 @@
-﻿using KitchenManagementSystem.API.Data;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
+using KitchenManagementSystem.API.DTOs;
 using KitchenManagementSystem.API.Models;
+using KitchenManagementSystem.API.Services;
+using KitchenManagementSystem.API.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class SuppliersController : ControllerBase
+public class SuppliersController : BaseApiController
 {
+    private readonly ISupplierService _service;
     private readonly AppDbContext _db;
 
-    private static readonly Guid DefaultOutletId =
-        Guid.Parse("00000000-0000-0000-0000-000000000001");
-
-    public SuppliersController(AppDbContext db)
+    public SuppliersController(ISupplierService service, AppDbContext db)
     {
+        _service = service;
         _db = db;
     }
 
     // GET api/suppliers
     [HttpGet]
     [Authorize(Policy = "StoreOperations")]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId)
     {
-        var suppliers = await _db.Suppliers
-            .Where(s => s.OutletId == DefaultOutletId)
-            .OrderBy(s => s.Name)
-            .ToListAsync();
+        Guid? finalOutletId;
+        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
 
-        return Ok(suppliers);
+        try
+        {
+            if (IsPowerAdmin() || IsSuperAdmin())
+            {
+                if (outletId.HasValue)
+                {
+                    await ValidateOutletAccessAsync(outletId.Value, _db);
+                }
+                finalOutletId = outletId;
+            }
+            else
+            {
+                finalOutletId = GetOutletId();
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+
+        var suppliers = await _service.GetAllAsync(orgId, finalOutletId);
+
+        var projected = suppliers.Select(s => new
+        {
+            s.Id,
+            s.OutletId,
+            s.Name,
+            s.ContactPerson,
+            s.Mobile,
+            s.GstNumber,
+            s.Email,
+            s.Address,
+            s.Outstanding,
+            Outlet = s.Outlet != null ? new { s.Outlet.Id, s.Outlet.Name } : null
+        });
+
+        return Ok(new
+        {
+            success = true,
+            data = projected
+        });
     }
 
     // POST api/suppliers
     [HttpPost]
     [Authorize(Policy = "StoreOperations")]
-    public async Task<IActionResult> Create([FromBody] Supplier supplier)
+    public async Task<IActionResult> Create([FromBody] CreateSupplierDto dto)
     {
         try
         {
-            supplier.Id = Guid.NewGuid();
-            supplier.OutletId = DefaultOutletId;
-            supplier.CreatedAt = DateTimeOffset.UtcNow;
-
-            // Prevent EF from trying to insert Outlet
-            supplier.Outlet = null!;
-
-            _db.Suppliers.Add(supplier);
-
-            await _db.SaveChangesAsync();
-
-            return Ok(supplier);
-        }
-        catch (Exception ex)
-        {
-            return BadRequest(new
+            Guid defaultOutletId = Guid.Empty;
+            if (IsPowerAdmin() || IsSuperAdmin())
             {
-                Error = ex.Message,
-                InnerError = ex.InnerException?.Message
+                if (dto.OutletId == Guid.Empty)
+                {
+                    return BadRequest(new { success = false, message = "Please select an outlet." });
+                }
+                defaultOutletId = dto.OutletId;
+                await ValidateOutletAccessAsync(defaultOutletId, _db);
+            }
+            else
+            {
+                defaultOutletId = GetOutletId();
+            }
+
+            var supplier = await _service.CreateAsync(defaultOutletId, dto);
+            return Ok(new
+            {
+                success = true,
+                data = supplier
             });
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (KeyNotFoundException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
         }
     }
 
     // PUT api/suppliers/{id}
     [HttpPut("{id}")]
     [Authorize(Policy = "StoreOperations")]
-    public async Task<IActionResult> Update(Guid id, [FromBody] Supplier updated)
+    public async Task<IActionResult> Update(Guid id, [FromBody] UpdateSupplierDto dto)
     {
-        var supplier = await _db.Suppliers.FindAsync(id);
+        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        Guid? outletId = IsPowerAdmin() || IsSuperAdmin() ? null : GetOutletId();
+        
+        var supplier = await _service.UpdateAsync(orgId, outletId, id, dto);
 
         if (supplier == null)
-            return NotFound();
+            return NotFound(new { success = false, message = "Supplier not found or access denied" });
 
-        supplier.Name = updated.Name;
-        supplier.ContactPerson = updated.ContactPerson;
-        supplier.Mobile = updated.Mobile;
-        supplier.GstNumber = updated.GstNumber;
-        supplier.Email = updated.Email;
-        supplier.Address = updated.Address;
-        supplier.Outstanding = updated.Outstanding;
-
-        await _db.SaveChangesAsync();
-
-        return Ok(supplier);
+        return Ok(new
+        {
+            success = true,
+            data = supplier
+        });
     }
 
     // DELETE api/suppliers/{id}
@@ -92,17 +140,17 @@ public class SuppliersController : ControllerBase
     [Authorize(Policy = "StoreOperations")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var supplier = await _db.Suppliers.FindAsync(id);
+        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        Guid? outletId = IsPowerAdmin() || IsSuperAdmin() ? null : GetOutletId();
 
-        if (supplier == null)
-            return NotFound();
+        var deleted = await _service.DeleteAsync(orgId, outletId, id);
 
-        _db.Suppliers.Remove(supplier);
-
-        await _db.SaveChangesAsync();
+        if (!deleted)
+            return NotFound(new { success = false, message = "Supplier not found or access denied" });
 
         return Ok(new
         {
+            success = true,
             message = "Deleted successfully"
         });
     }

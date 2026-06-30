@@ -32,6 +32,7 @@ public class AuthService : IAuthService
     {
         var user = await _db.Users
             .Include(u => u.Outlet)
+            .Include(u => u.Organization)
             .FirstOrDefaultAsync(u => u.Email.ToLower() == dto.Email.ToLower());
 
         if (user == null || !user.IsActive)
@@ -51,6 +52,7 @@ public class AuthService : IAuthService
     {
         var user = await _db.Users
             .Include(u => u.Outlet)
+            .Include(u => u.Organization)
             .FirstOrDefaultAsync(u =>
                 u.RefreshToken == refreshToken &&
                 u.RefreshTokenExpiry > DateTimeOffset.UtcNow &&
@@ -129,7 +131,9 @@ public class AuthService : IAuthService
             Email = user.Email,
             FullName = user.FullName,
             Role = user.Role,
-            OutletId = user.OutletId
+            OutletId = user.OutletId,
+            OrganizationId = user.OrganizationId,
+            OrganizationName = user.Organization?.Name
         };
     }
 
@@ -155,7 +159,9 @@ public class AuthService : IAuthService
             new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
             new Claim(ClaimTypes.Role, user.Role),
             new Claim("outletId", user.OutletId?.ToString() ?? ""),
-            new Claim("fullName", user.FullName ?? "")
+            new Claim("organizationId", user.OrganizationId?.ToString() ?? ""),
+            new Claim("fullName", user.FullName ?? ""),
+            new Claim("organizationName", user.Organization?.Name ?? "")
         };
 
         var token = new JwtSecurityToken(
