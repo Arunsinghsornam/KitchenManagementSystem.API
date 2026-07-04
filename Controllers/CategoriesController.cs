@@ -26,9 +26,9 @@ public class CategoriesController : BaseApiController
 
     // GET: api/categories
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? organizationId)
     {
-        var orgId = IsPowerAdmin() ? null : GetOrganizationIdOrNull();
+        var orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationIdOrNull();
         var categories = await _service.GetAllAsync(orgId);
         return Ok(categories);
     }

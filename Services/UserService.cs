@@ -95,6 +95,16 @@ public class UserService : IUserService
 
         if (dto.FullName  is not null) user.FullName  = dto.FullName.Trim();
         if (dto.IsActive  is not null) user.IsActive  = dto.IsActive.Value;
+
+        if (!string.IsNullOrEmpty(dto.Email) && !dto.Email.Equals(user.Email, StringComparison.OrdinalIgnoreCase))
+        {
+            var emailExists = await _db.Users.AnyAsync(u => u.Id != id && u.Email.ToLower() == dto.Email.ToLower());
+            if (emailExists)
+            {
+                throw new ArgumentException($"A user with email '{dto.Email}' already exists.");
+            }
+            user.Email = dto.Email.Trim();
+        }
         
         if (dto.OutletId is not null)
         {

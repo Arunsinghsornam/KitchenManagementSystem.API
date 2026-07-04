@@ -23,10 +23,10 @@ public class DashboardController : BaseApiController
 
     // GET api/dashboard/summary
     [HttpGet("summary")]
-    public async Task<IActionResult> GetSummary([FromQuery] Guid? outletId)
+    public async Task<IActionResult> GetSummary([FromQuery] Guid? outletId, [FromQuery] Guid? organizationId)
     {
         Guid? finalOutletId;
-        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
 
         try
         {
@@ -34,7 +34,11 @@ public class DashboardController : BaseApiController
             {
                 if (outletId.HasValue)
                 {
-                    await ValidateOutletAccessAsync(outletId.Value, _db);
+                    // Power admin can access all outlets, super admin must validate access within their org
+                    if (!IsPowerAdmin())
+                    {
+                        await ValidateOutletAccessAsync(outletId.Value, _db);
+                    }
                 }
                 finalOutletId = outletId;
             }

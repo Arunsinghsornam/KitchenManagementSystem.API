@@ -1,3 +1,4 @@
 <Solution>
+  <Project Path="../Models/Models.csproj" Id="1a1ce8cc-2a6a-458e-95d7-5682db3ef780" />
   <Project Path="KitchenManagementSystem.API.csproj" />
 </Solution>

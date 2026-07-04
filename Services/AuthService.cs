@@ -133,7 +133,8 @@ public class AuthService : IAuthService
             Role = user.Role,
             OutletId = user.OutletId,
             OrganizationId = user.OrganizationId,
-            OrganizationName = user.Organization?.Name
+            OrganizationName = user.Organization?.Name,
+            LogoUrl = user.Organization?.LogoUrl
         };
     }
 
@@ -161,7 +162,8 @@ public class AuthService : IAuthService
             new Claim("outletId", user.OutletId?.ToString() ?? ""),
             new Claim("organizationId", user.OrganizationId?.ToString() ?? ""),
             new Claim("fullName", user.FullName ?? ""),
-            new Claim("organizationName", user.Organization?.Name ?? "")
+            new Claim("organizationName", user.Organization?.Name ?? ""),
+            new Claim("logoUrl", user.Organization?.LogoUrl ?? "")
         };
 
         var token = new JwtSecurityToken(

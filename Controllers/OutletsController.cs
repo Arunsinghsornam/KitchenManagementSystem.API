@@ -19,9 +19,9 @@ public class OutletsController : BaseApiController
 
     // GET: api/Outlets
     [HttpGet]
-    public async Task<ActionResult<IEnumerable<Outlet>>> GetOutlets()
+    public async Task<ActionResult<IEnumerable<Outlet>>> GetOutlets([FromQuery] Guid? organizationId = null)
     {
-        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
         var outlets = await _service.GetAllAsync(orgId);
         return Ok(outlets);
     }

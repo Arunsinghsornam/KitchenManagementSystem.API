@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using Microsoft.AspNetCore.Http;
 
 namespace KitchenManagementSystem.API.DTOs;
 
@@ -28,6 +29,7 @@ public class LoginResponseDto
     public Guid? OutletId { get; set; }
     public Guid? OrganizationId { get; set; }
     public string? OrganizationName { get; set; }
+    public string? LogoUrl { get; set; }
 }
 
 public class RefreshTokenRequestDto
@@ -64,6 +66,8 @@ public class RegisterDto
 
     [Required, MinLength(6)]
     public string Password { get; set; } = default!;
+
+    public IFormFile? Logo { get; set; }
 }
 
 // ── User Management ───────────────────────────────────────────────────────────
@@ -87,6 +91,7 @@ public class CreateUserDto
 
 public class UpdateUserDto
 {
+    public string? Email { get; set; }
     public string? FullName { get; set; }
     public string? Role { get; set; }
     public Guid? OutletId { get; set; }
