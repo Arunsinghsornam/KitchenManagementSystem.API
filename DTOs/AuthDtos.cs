@@ -26,6 +26,8 @@ public class LoginResponseDto
     public string? FullName { get; set; }
     public string Role { get; set; } = default!;
     public Guid? OutletId { get; set; }
+    public Guid? OrganizationId { get; set; }
+    public string? OrganizationName { get; set; }
 }
 
 public class RefreshTokenRequestDto
@@ -42,6 +44,26 @@ public class ChangePasswordDto
 public class ForgotPasswordDto
 {
     [Required, EmailAddress] public string Email { get; set; } = default!;
+}
+
+public class RegisterDto
+{
+    [Required, MinLength(2)]
+    public string OrganizationName { get; set; } = default!;
+
+    [Required, MinLength(2)]
+    public string OutletName { get; set; } = default!;
+
+    public string? OutletAddress { get; set; }
+
+    [Required]
+    public string FullName { get; set; } = default!;
+
+    [Required, EmailAddress]
+    public string Email { get; set; } = default!;
+
+    [Required, MinLength(6)]
+    public string Password { get; set; } = default!;
 }
 
 // ── User Management ───────────────────────────────────────────────────────────
@@ -79,6 +101,7 @@ public class UserResponseDto
     public string Role { get; set; } = default!;
     public Guid? OutletId { get; set; }
     public string? OutletName { get; set; }
+    public Guid? OrganizationId { get; set; }
     public bool IsActive { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }

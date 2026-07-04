@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using KitchenManagementSystem.API.Models;
 
 namespace KitchenManagementSystem.API.Data;
@@ -8,6 +8,7 @@ public class AppDbContext : DbContext
     public AppDbContext(DbContextOptions<AppDbContext> options) : base(options) { }
 
     public DbSet<Outlet> Outlets => Set<Outlet>();
+    public DbSet<Organization> Organizations => Set<Organization>();
     public DbSet<Category> Categories => Set<Category>();
     public DbSet<RawMaterial> RawMaterials => Set<RawMaterial>();
     public DbSet<Supplier> Suppliers => Set<Supplier>();
@@ -27,7 +28,15 @@ public class AppDbContext : DbContext
         base.OnModelCreating(modelBuilder);
 
         // Tell EF Core the exact table names in SQL Server
-        modelBuilder.Entity<Outlet>().ToTable("Outlets");
+        modelBuilder.Entity<Organization>().ToTable("Organizations");
+        modelBuilder.Entity<Outlet>(b =>
+        {
+            b.ToTable("Outlets");
+            b.HasOne(o => o.Organization)
+             .WithMany()
+             .HasForeignKey(o => o.OrganizationId)
+             .OnDelete(DeleteBehavior.Restrict);
+        });
         modelBuilder.Entity<Category>().ToTable("Categories");
         modelBuilder.Entity<RawMaterial>().ToTable("RawMaterials");
         modelBuilder.Entity<Supplier>().ToTable("Suppliers");
@@ -68,6 +77,12 @@ public class AppDbContext : DbContext
             b.HasOne(u => u.Outlet)
              .WithMany()
              .HasForeignKey(u => u.OutletId)
+             .OnDelete(DeleteBehavior.SetNull);
+
+            // FK to Organizations (nullable — PowerAdmin has no organization)
+            b.HasOne(u => u.Organization)
+             .WithMany()
+             .HasForeignKey(u => u.OrganizationId)
              .OnDelete(DeleteBehavior.SetNull);
         });
 

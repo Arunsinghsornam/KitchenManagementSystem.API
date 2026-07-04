@@ -1,4 +1,4 @@
-﻿using KitchenManagementSystem.API.Data;
+using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.Models;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,6 +43,8 @@ public class PLReportService : IPLReportService
                     g => g.Sum(x => x.Total));
 
         var totalRevenue = sales.Sum(x => x.Total);
+        var totalDiscount = sales.Sum(x => x.Discount);
+        var totalGrossRevenue = sales.Sum(x => x.Subtotal);
 
         var totalOrders = sales.Count;
         var saleIds = sales
@@ -312,6 +314,8 @@ public class PLReportService : IPLReportService
             Channels = channels,
 
             TotalRevenue = totalRevenue,
+            TotalDiscount = totalDiscount,
+            TotalGrossRevenue = totalGrossRevenue,
             TotalCogs = totalCogs,
             TotalGrossProfit = grossProfit,
             AvgMarginPct = marginPct,

@@ -1,4 +1,4 @@
-﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations;
 
 namespace KitchenManagementSystem.API.Models;
 
@@ -13,6 +13,8 @@ public List<MonthlyPLRow> Monthly { get; set; } = new();
     public decimal TotalPurchaseSpend { get; set; }
 
     public decimal TotalRevenue { get; set; }
+    public decimal TotalDiscount { get; set; }
+    public decimal TotalGrossRevenue { get; set; }
 
     public decimal TotalCogs { get; set; }
 

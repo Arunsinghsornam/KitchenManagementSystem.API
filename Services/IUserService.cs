@@ -4,9 +4,9 @@ namespace KitchenManagementSystem.API.Services;
 
 public interface IUserService
 {
-    Task<IEnumerable<UserResponseDto>> GetAllAsync(Guid? outletId = null);
+    Task<IEnumerable<UserResponseDto>> GetAllAsync(Guid? organizationId, Guid? outletId = null);
     Task<UserResponseDto?> GetByIdAsync(Guid id);
-    Task<UserResponseDto> CreateAsync(CreateUserDto dto);
+    Task<UserResponseDto> CreateAsync(CreateUserDto dto, Guid? organizationId);
     Task<UserResponseDto?> UpdateAsync(Guid id, UpdateUserDto dto);
     Task<bool> DeleteAsync(Guid id);
     Task<bool> ExistsAsync(string email);

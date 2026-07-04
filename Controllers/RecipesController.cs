@@ -1,98 +1,109 @@
-﻿using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
+using KitchenManagementSystem.API.DTOs;
+using KitchenManagementSystem.API.Services;
 using KitchenManagementSystem.API.Data;
-using KitchenManagementSystem.API.Models;
+using System.Threading.Tasks;
+using System.Linq;
+using System;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize]
-public class RecipesController : ControllerBase
+public class RecipesController : BaseApiController
 {
+    private readonly IRecipeService _service;
     private readonly AppDbContext _db;
 
-    private static readonly Guid DefaultOutletId =
-        Guid.Parse("00000000-0000-0000-0000-000000000001");
-
-    public RecipesController(AppDbContext db)
+    public RecipesController(IRecipeService service, AppDbContext db)
     {
+        _service = service;
         _db = db;
     }
 
     // GET api/recipes
     [HttpGet]
     [Authorize(Policy = "RecipeAccess")]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId)
     {
-        var items = await _db.MenuItems
-            .Where(m =>
-                m.OutletId == DefaultOutletId &&
-                m.Active)
-            .OrderBy(m => m.Name)
-            .Select(m => new
+        Guid finalOutletId;
+        try
+        {
+            if (IsPowerAdmin() || IsSuperAdmin())
             {
-                m.Id,
-                m.Name,
-                m.Category,
-                m.SellingPrice,
-                m.Active,
-
-                RecipeCost = m.RecipeIngredients.Sum(r =>
-                    r.Quantity * r.RawMaterial.AverageCost),
-
-                Ingredients = m.RecipeIngredients.Select(r => new
+                if (outletId == null || outletId == Guid.Empty)
                 {
-                    r.Id,
-                    r.RawMaterialId,
-                    r.Quantity,
-                    RawMaterialName = r.RawMaterial.Name,
-                    Unit = r.RawMaterial.Unit,
-                    AverageCost = r.RawMaterial.AverageCost,
-                    Cost = r.Quantity * r.RawMaterial.AverageCost
-                })
-            })
-            .ToListAsync();
+                    return BadRequest(new { message = "Please select an outlet." });
+                }
+                await ValidateOutletAccessAsync(outletId.Value, _db);
+                finalOutletId = outletId.Value;
+            }
+            else
+            {
+                finalOutletId = GetOutletId();
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
 
-        return Ok(items);
+        var menuItems = await _service.GetAllAsync(finalOutletId);
+
+        // Project MenuItems to match expected frontend DTO shape
+        var projected = menuItems.Select(m => new
+        {
+            m.Id,
+            m.Name,
+            m.Category,
+            m.SellingPrice,
+            m.Active,
+
+            RecipeCost = m.RecipeIngredients.Sum(r =>
+                r.Quantity * (r.RawMaterial != null ? r.RawMaterial.AverageCost : 0)),
+
+            Ingredients = m.RecipeIngredients.Select(r => new
+            {
+                r.Id,
+                r.RawMaterialId,
+                r.Quantity,
+                RawMaterialName = r.RawMaterial != null ? r.RawMaterial.Name : null,
+                Unit = r.RawMaterial != null ? r.RawMaterial.Unit : null,
+                AverageCost = r.RawMaterial != null ? r.RawMaterial.AverageCost : 0,
+                Cost = r.Quantity * (r.RawMaterial != null ? r.RawMaterial.AverageCost : 0)
+            })
+        });
+
+        return Ok(projected);
     }
 
     // POST api/recipes
     [HttpPost]
     [Authorize(Policy = "RecipeAccess")]
-    public async Task<IActionResult> Create([FromBody] CreateRecipeDto dto)
+    public async Task<IActionResult> Create([FromBody] CreateRecipeDto dto, [FromQuery] Guid? outletId)
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
 
         try
         {
-            var menuItem = new MenuItem
+            Guid finalOutletId;
+            if (IsPowerAdmin() || IsSuperAdmin())
             {
-                Id = Guid.NewGuid(),
-                OutletId = DefaultOutletId,
-                Name = dto.Name,
-                Category = dto.Category,
-                SellingPrice = dto.SellingPrice,
-                Active = true,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-
-            _db.MenuItems.Add(menuItem);
-
-            foreach (var ing in dto.Ingredients)
+                if (outletId == null || outletId == Guid.Empty)
+                    return BadRequest(new { message = "Please select an outlet." });
+                finalOutletId = outletId.Value;
+                await ValidateOutletAccessAsync(finalOutletId, _db);
+            }
+            else
             {
-                _db.RecipeIngredients.Add(new RecipeIngredient
-                {
-                    Id = Guid.NewGuid(),
-                    MenuItemId = menuItem.Id,
-                    RawMaterialId = ing.RawMaterialId,
-                    Quantity = ing.Quantity
-                });
+                finalOutletId = GetOutletId();
             }
 
-            await _db.SaveChangesAsync();
+            var menuItem = await _service.CreateAsync(finalOutletId, dto);
 
             return Ok(new
             {
@@ -102,19 +113,17 @@ public class RecipesController : ControllerBase
                 menuItem.SellingPrice
             });
         }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
         catch (DbUpdateException)
         {
-            return BadRequest(new
-            {
-                message = "Duplicate ingredients are not allowed."
-            });
+            return BadRequest(new { message = "Duplicate ingredients are not allowed." });
         }
-        catch
+        catch (Exception ex)
         {
-            return BadRequest(new
-            {
-                message = "Failed to create recipe."
-            });
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -129,48 +138,31 @@ public class RecipesController : ControllerBase
         try
         {
             var menuItem = await _db.MenuItems.FindAsync(id);
-
             if (menuItem == null)
                 return NotFound();
 
-            menuItem.Name = dto.Name;
-            menuItem.Category = dto.Category;
-            menuItem.SellingPrice = dto.SellingPrice;
+            await ValidateOutletAccessAsync(menuItem.OutletId, _db);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
 
-            var oldIngredients = await _db.RecipeIngredients
-                .Where(r => r.MenuItemId == id)
-                .ToListAsync();
-
-            _db.RecipeIngredients.RemoveRange(oldIngredients);
-
-            foreach (var ing in dto.Ingredients)
-            {
-                _db.RecipeIngredients.Add(new RecipeIngredient
-                {
-                    Id = Guid.NewGuid(),
-                    MenuItemId = id,
-                    RawMaterialId = ing.RawMaterialId,
-                    Quantity = ing.Quantity
-                });
-            }
-
-            await _db.SaveChangesAsync();
+        try
+        {
+            var updated = await _service.UpdateAsync(id, dto);
+            if (!updated)
+                return NotFound();
 
             return Ok();
         }
         catch (DbUpdateException)
         {
-            return BadRequest(new
-            {
-                message = "Duplicate ingredients are not allowed."
-            });
+            return BadRequest(new { message = "Duplicate ingredients are not allowed." });
         }
-        catch
+        catch (Exception ex)
         {
-            return BadRequest(new
-            {
-                message = "Failed to update recipe."
-            });
+            return BadRequest(new { message = ex.Message });
         }
     }
 
@@ -179,33 +171,24 @@ public class RecipesController : ControllerBase
     [Authorize(Policy = "RecipeAccess")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        var menuItem = await _db.MenuItems
-            .FirstOrDefaultAsync(x => x.Id == id);
+        try
+        {
+            var menuItem = await _db.MenuItems.FindAsync(id);
+            if (menuItem == null)
+                return NotFound();
 
-        if (menuItem == null)
+            await ValidateOutletAccessAsync(menuItem.OutletId, _db);
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+
+        var deleted = await _service.DeleteAsync(id);
+
+        if (!deleted)
             return NotFound();
 
-        menuItem.Active = false;
-
-        await _db.SaveChangesAsync();
-
-        return Ok(new
-        {
-            message = "Recipe archived successfully"
-        });
-    }
-
-    public class CreateRecipeDto
-    {
-        public string Name { get; set; } = string.Empty;
-        public string? Category { get; set; }
-        public decimal SellingPrice { get; set; }
-        public List<IngredientDto> Ingredients { get; set; } = [];
-    }
-
-    public class IngredientDto
-    {
-        public Guid RawMaterialId { get; set; }
-        public decimal Quantity { get; set; }
+        return Ok(new { message = "Recipe archived successfully" });
     }
 }

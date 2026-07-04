@@ -7,5 +7,5 @@ public class Category
     public string Name { get; set; } = string.Empty;
     public DateTimeOffset CreatedAt { get; set; }
 
-    public Outlet Outlet { get; set; } = null!;
+    public Outlet? Outlet { get; set; }
 }

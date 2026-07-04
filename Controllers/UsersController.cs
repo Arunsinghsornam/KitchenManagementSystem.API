@@ -7,13 +7,12 @@ using Microsoft.AspNetCore.Mvc;
 namespace KitchenManagementSystem.API.Controllers;
 
 /// <summary>
-/// User management — only SuperAdmin can create / delete users.
-/// StoreManager can list users scoped to their own outlet.
+/// User management — only SuperAdmin / PowerAdmin can create / delete users.
 /// </summary>
 [ApiController]
 [Route("api/[controller]")]
 [Authorize] // Every endpoint requires a valid JWT; individual actions tighten further
-public class UsersController : ControllerBase
+public class UsersController : BaseApiController
 {
     private readonly IUserService _users;
 
@@ -21,17 +20,15 @@ public class UsersController : ControllerBase
 
     // ── GET /api/users ────────────────────────────────────────────────────────
     /// <summary>
-    /// SuperAdmin: returns all users across all outlets.
-    /// StoreManager: returns only users belonging to their outlet.
+    /// SuperAdmin: returns all users across all outlets for their organization.
+    /// PowerAdmin: returns all users across all organizations.
     /// </summary>
     [HttpGet]
-    [Authorize(Policy = "SuperAdmin")]// super_admin + store_manager
+    [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> GetAll()
     {
-      
-
-        // Store managers see only their outlet's users
-        var users = await _users.GetAllAsync(null);
+        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        var users = await _users.GetAllAsync(orgId, null);
         return Ok(ApiResponse<IEnumerable<UserResponseDto>>.Ok(users));
     }
 
@@ -41,15 +38,18 @@ public class UsersController : ControllerBase
     public async Task<IActionResult> GetById(Guid id)
     {
         var user = await _users.GetByIdAsync(id);
-        return user is null
-            ? NotFound(ApiResponse<object>.Fail($"User {id} not found."))
-            : Ok(ApiResponse<UserResponseDto>.Ok(user));
+        if (user is null)
+            return NotFound(ApiResponse<object>.Fail($"User {id} not found."));
+
+        if (!IsPowerAdmin() && user.OrganizationId != GetOrganizationId())
+            return Forbid();
+
+        return Ok(ApiResponse<UserResponseDto>.Ok(user));
     }
 
     // ── POST /api/users ───────────────────────────────────────────────────────
     /// <summary>
-    /// Create a new user. Only SuperAdmin can create other admins.
-    /// StoreManager can only create staff for their own outlet.
+    /// Create a new user assignment.
     /// </summary>
     [HttpPost]
     [Authorize(Policy = "SuperAdmin")]
@@ -60,9 +60,6 @@ public class UsersController : ControllerBase
                 "Validation failed",
                 ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
 
-        // Only super_admin can create another super_admin or store_manager
-       
-
         // Prevent email duplicates
         if (await _users.ExistsAsync(dto.Email))
             return Conflict(ApiResponse<object>.Fail(
@@ -70,7 +67,8 @@ public class UsersController : ControllerBase
 
         try
         {
-            var created = await _users.CreateAsync(dto);
+            Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+            var created = await _users.CreateAsync(dto, orgId);
             return CreatedAtAction(
                 nameof(GetById),
                 new { id = created.Id },
@@ -84,14 +82,18 @@ public class UsersController : ControllerBase
 
     // ── PUT /api/users/{id} ───────────────────────────────────────────────────
     /// <summary>
-    /// Update role, outlet assignment, full name, or active status.
-    /// Does NOT change the password — use /api/auth/change-password for that.
+    /// Update user.
     /// </summary>
     [HttpPut("{id:guid}")]
     [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
     {
-        
+        var user = await _users.GetByIdAsync(id);
+        if (user is null)
+            return NotFound(ApiResponse<object>.Fail($"User {id} not found."));
+
+        if (!IsPowerAdmin() && user.OrganizationId != GetOrganizationId())
+            return Forbid();
 
         try
         {
@@ -108,18 +110,23 @@ public class UsersController : ControllerBase
 
     // ── DELETE /api/users/{id} ────────────────────────────────────────────────
     /// <summary>
-    /// Soft-deletes the user (IsActive = false) and revokes their refresh token.
-    /// Only SuperAdmin can delete users.
+    /// Soft-deletes the user.
     /// </summary>
     [HttpDelete("{id:guid}")]
     [Authorize(Policy = "SuperAdmin")]
     public async Task<IActionResult> Delete(Guid id)
     {
-        // Guard: a super_admin cannot delete themselves
-        var currentUserId = User.FindFirstValue(ClaimTypes.NameIdentifier)
-                         ?? User.FindFirstValue("sub");
-        if (Guid.TryParse(currentUserId, out var callerId) && callerId == id)
+        // Guard: a user cannot delete themselves
+        var currentUserId = GetUserId();
+        if (currentUserId == id)
             return BadRequest(ApiResponse<object>.Fail("You cannot delete your own account."));
+
+        var user = await _users.GetByIdAsync(id);
+        if (user is null)
+            return NotFound(ApiResponse<object>.Fail($"User {id} not found."));
+
+        if (!IsPowerAdmin() && user.OrganizationId != GetOrganizationId())
+            return Forbid();
 
         var ok = await _users.DeleteAsync(id);
         return ok
@@ -129,9 +136,7 @@ public class UsersController : ControllerBase
 
     // ── POST /api/users/{id}/reset-password ───────────────────────────────────
     /// <summary>
-    /// SuperAdmin only: set a new temporary password for any user.
-    /// The user must change it on next login (you can add a ForcePasswordReset
-    /// column later if needed).
+    /// Admin reset password.
     /// </summary>
     [HttpPost("{id:guid}/reset-password")]
     [Authorize(Policy = "SuperAdmin")]
@@ -144,7 +149,9 @@ public class UsersController : ControllerBase
         if (user is null)
             return NotFound(ApiResponse<object>.Fail($"User {id} not found."));
 
-        // Re-use the ChangePassword flow but bypass the current-password check
+        if (!IsPowerAdmin() && user.OrganizationId != GetOrganizationId())
+            return Forbid();
+
         await _users.SetPasswordAsync(id, dto.NewPassword);
 
         return Ok(ApiResponse<object>.Ok(null!, "Password reset successfully."));

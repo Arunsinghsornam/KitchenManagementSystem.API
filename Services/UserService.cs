@@ -12,19 +12,20 @@ public class UserService : IUserService
     // Valid role strings — keep in sync with Program.cs policy definitions
     private static readonly HashSet<string> ValidRoles = new()
     {
-        "super_admin", "store_manager", "kitchen_staff", "accountant"
+        "power_admin", "super_admin", "store_manager", "kitchen_staff", "accountant"
     };
 
     public UserService(AppDbContext db) => _db = db;
 
     // ── Query ─────────────────────────────────────────────────────────────────
 
-    public async Task<IEnumerable<UserResponseDto>> GetAllAsync(Guid? outletId = null)
+    public async Task<IEnumerable<UserResponseDto>> GetAllAsync(Guid? organizationId, Guid? outletId = null)
     {
         var users = await _db.Users
             .Include(u => u.Outlet)
             .Where(u =>
                 u.IsActive &&
+                (organizationId == null || u.OrganizationId == organizationId) &&
                 (!outletId.HasValue || u.OutletId == outletId))
             .OrderBy(u => u.FullName)
             .ToListAsync();
@@ -50,11 +51,20 @@ public class UserService : IUserService
 
     // ── Create ────────────────────────────────────────────────────────────────
 
-    public async Task<UserResponseDto> CreateAsync(CreateUserDto dto)
+    public async Task<UserResponseDto> CreateAsync(CreateUserDto dto, Guid? organizationId)
     {
         if (!ValidRoles.Contains(dto.Role))
             throw new ArgumentException($"Invalid role '{dto.Role}'. " +
                 $"Valid roles: {string.Join(", ", ValidRoles)}");
+
+        if (dto.OutletId.HasValue)
+        {
+            var outlet = await _db.Outlets.FindAsync(dto.OutletId.Value);
+            if (outlet == null || (organizationId.HasValue && outlet.OrganizationId != organizationId.Value))
+            {
+                throw new ArgumentException("Selected outlet does not belong to your organization.");
+            }
+        }
 
         var user = new User
         {
@@ -63,6 +73,7 @@ public class UserService : IUserService
             FullName    = dto.FullName?.Trim(),
             Role        = dto.Role,
             OutletId    = dto.OutletId,
+            OrganizationId = organizationId,
             IsActive    = true
         };
 
@@ -84,7 +95,23 @@ public class UserService : IUserService
 
         if (dto.FullName  is not null) user.FullName  = dto.FullName.Trim();
         if (dto.IsActive  is not null) user.IsActive  = dto.IsActive.Value;
-        if (dto.OutletId  is not null) user.OutletId  = dto.OutletId;
+        
+        if (dto.OutletId is not null)
+        {
+            if (dto.OutletId == Guid.Empty)
+            {
+                user.OutletId = null;
+            }
+            else
+            {
+                var outlet = await _db.Outlets.FindAsync(dto.OutletId.Value);
+                if (outlet == null || (user.OrganizationId.HasValue && outlet.OrganizationId != user.OrganizationId.Value))
+                {
+                    throw new ArgumentException("Selected outlet does not belong to your organization.");
+                }
+                user.OutletId = dto.OutletId;
+            }
+        }
 
         if (dto.Role is not null)
         {
@@ -136,6 +163,7 @@ public class UserService : IUserService
         Role       = u.Role,
         OutletId   = u.OutletId,
         OutletName = u.Outlet?.Name,
+        OrganizationId = u.OrganizationId,
         IsActive   = u.IsActive,
         CreatedAt  = u.CreatedAt
     };

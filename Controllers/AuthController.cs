@@ -1,8 +1,11 @@
 using System.Security.Claims;
 using KitchenManagementSystem.API.DTOs;
+using KitchenManagementSystem.API.Data;
+using KitchenManagementSystem.API.Models;
 using KitchenManagementSystem.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace KitchenManagementSystem.API.Controllers;
 
@@ -11,8 +14,13 @@ namespace KitchenManagementSystem.API.Controllers;
 public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;
+    private readonly AppDbContext _db;
 
-    public AuthController(IAuthService auth) => _auth = auth;
+    public AuthController(IAuthService auth, AppDbContext db)
+    {
+        _auth = auth;
+        _db = db;
+    }
 
  
 
@@ -121,6 +129,88 @@ public class AuthController : ControllerBase
         };
 
         return Ok(ApiResponse<object>.Ok(profile));
+    }
+
+    // ── POST /api/auth/register ──────────────────────────────────────────────
+    /// <summary>
+    /// Public registration: creates a new Organization, a first Outlet,
+    /// and a super_admin user in a single transaction.
+    /// Returns a JWT so the user is immediately logged in.
+    /// </summary>
+    [HttpPost("register")]
+    [AllowAnonymous]
+    public async Task<IActionResult> Register([FromBody] RegisterDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ApiResponse<object>.Fail(
+                "Validation failed",
+                ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
+
+        // Check for duplicate email
+        var emailExists = await _db.Users.AnyAsync(u => u.Email == dto.Email);
+        if (emailExists)
+            return Conflict(ApiResponse<object>.Fail("An account with this email already exists."));
+
+        await using var transaction = await _db.Database.BeginTransactionAsync();
+
+        try
+        {
+            // 1. Create Organization
+            var org = new Organization
+            {
+                Id = Guid.NewGuid(),
+                Name = dto.OrganizationName,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _db.Organizations.Add(org);
+
+            // 2. Create initial Outlet
+            var outlet = new Outlet
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = org.Id,
+                Name = dto.OutletName,
+                Address = dto.OutletAddress,
+                Active = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _db.Outlets.Add(outlet);
+
+            // 3. Create super_admin user
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                OrganizationId = org.Id,
+                OutletId = null, // super_admin is org-wide, not outlet-scoped
+                Email = dto.Email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
+                FullName = dto.FullName,
+                Role = "super_admin",
+                IsActive = true,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            _db.Users.Add(user);
+
+            await _db.SaveChangesAsync();
+            await transaction.CommitAsync();
+
+            // 4. Auto-login — issue JWT
+            var loginResult = await _auth.LoginAsync(new LoginRequestDto
+            {
+                Email = dto.Email,
+                Password = dto.Password
+            });
+
+            return Ok(ApiResponse<LoginResponseDto>.Ok(
+                loginResult!,
+                "Registration successful. You are now logged in."));
+        }
+        catch (Exception)
+        {
+            await transaction.RollbackAsync();
+            return StatusCode(500, ApiResponse<object>.Fail(
+                "An unexpected error occurred during registration. Please try again."));
+        }
     }
 
     // ── Helper ────────────────────────────────────────────────────────────────

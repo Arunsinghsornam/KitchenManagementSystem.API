@@ -1,47 +1,69 @@
-﻿
+using System;
+using System.Linq;
+using System.Threading.Tasks;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
+using KitchenManagementSystem.API.DTOs;
+using KitchenManagementSystem.API.Services;
 using KitchenManagementSystem.API.Data;
-using KitchenManagementSystem.API.Models;
 
 namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
 [Authorize(Policy = "StoreOperations")]
-public class SalesController : ControllerBase
+public class SalesController : BaseApiController
 {
+    private readonly ISalesService _service;
     private readonly AppDbContext _db;
 
-    private static readonly Guid DefaultOutletId =
-        Guid.Parse("00000000-0000-0000-0000-000000000001");
-
-    public SalesController(AppDbContext db)
+    public SalesController(ISalesService service, AppDbContext db)
     {
+        _service = service;
         _db = db;
     }
 
     // GET api/sales — list recent sales
     [HttpGet]
-    public async Task<IActionResult> GetAll()
+    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId)
     {
-        var sales = await _db.Sales
-            .Where(s => s.OutletId == DefaultOutletId)
-            .OrderByDescending(s => s.SaleDate)
-            .Take(100)
-            .Select(s => new
-            {
-                s.Id,
-                s.SaleDate,
-                s.Channel,
-                s.Subtotal,
-                s.Discount,
-                s.Total
-            })
-            .ToListAsync();
+        Guid? finalOutletId;
+        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
 
-        return Ok(sales);
+        try
+        {
+            if (IsPowerAdmin() || IsSuperAdmin())
+            {
+                if (outletId.HasValue)
+                {
+                    await ValidateOutletAccessAsync(outletId.Value, _db);
+                }
+                finalOutletId = outletId;
+            }
+            else
+            {
+                finalOutletId = GetOutletId();
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+
+        var sales = await _service.GetAllAsync(orgId, finalOutletId);
+
+        var projected = sales.Select(s => new
+        {
+            s.Id,
+            s.OutletId,
+            s.SaleDate,
+            s.Channel,
+            s.Subtotal,
+            s.Discount,
+            s.Total
+        });
+
+        return Ok(projected);
     }
 
     // GET api/sales/stock-check
@@ -50,25 +72,11 @@ public class SalesController : ControllerBase
         [FromQuery] Guid menuItemId,
         [FromQuery] decimal quantity)
     {
-        var ingredients = await _db.RecipeIngredients
-            .Where(r => r.MenuItemId == menuItemId)
-            .Include(r => r.RawMaterial)
-            .ToListAsync();
-
-        var shortages = ingredients
-            .Where(r => r.RawMaterial.CurrentStock < r.Quantity * quantity)
-            .Select(r => new
-            {
-                Item = r.RawMaterial.Name,
-                Have = r.RawMaterial.CurrentStock,
-                Need = r.Quantity * quantity,
-                Unit = r.RawMaterial.Unit
-            })
-            .ToList();
+        var (hasShortage, shortages) = await _service.StockCheckAsync(menuItemId, quantity);
 
         return Ok(new
         {
-            hasShortage = shortages.Any(),
+            hasShortage,
             shortages
         });
     }
@@ -84,82 +92,22 @@ public class SalesController : ControllerBase
 
         try
         {
-            if (dto.Items == null || !dto.Items.Any())
+            Guid outletId;
+            if (IsPowerAdmin() || IsSuperAdmin())
             {
-                return BadRequest(new
+                if (dto.OutletId == null || dto.OutletId == Guid.Empty)
                 {
-                    message = "Please add at least one sale item."
-                });
-            }
-
-            var duplicateItems = dto.Items
-                .GroupBy(x => x.MenuItemId)
-                .Where(g => g.Count() > 1)
-                .ToList();
-
-            if (duplicateItems.Any())
-            {
-                return BadRequest(new
-                {
-                    message = "Duplicate menu items are not allowed."
-                });
-            }
-
-            foreach (var line in dto.Items)
-            {
-                var ingredients = await _db.RecipeIngredients
-                    .Where(r => r.MenuItemId == line.MenuItemId)
-                    .Include(r => r.RawMaterial)
-                    .ToListAsync();
-
-                foreach (var ing in ingredients)
-                {
-                    var needed = ing.Quantity * line.Quantity;
-
-                    if (ing.RawMaterial.CurrentStock < needed)
-                    {
-                        return BadRequest(new
-                        {
-                            message =
-                                $"Insufficient stock: {ing.RawMaterial.Name}. Need {needed} {ing.RawMaterial.Unit}, Available {ing.RawMaterial.CurrentStock}."
-                        });
-                    }
+                    return BadRequest(new { message = "Please select an outlet." });
                 }
+                outletId = dto.OutletId.Value;
+                await ValidateOutletAccessAsync(outletId, _db);
+            }
+            else
+            {
+                outletId = GetOutletId();
             }
 
-            var subtotal = dto.Items.Sum(i => i.Quantity * i.UnitPrice);
-            var total = Math.Max(0, subtotal - dto.Discount);
-
-            var sale = new Sale
-            {
-                Id = Guid.NewGuid(),
-                OutletId = DefaultOutletId,
-                SaleDate = dto.SaleDate,
-                Channel = dto.Channel,
-                Subtotal = subtotal,
-                Discount = dto.Discount,
-                Total = total,
-                CreatedAt = DateTimeOffset.UtcNow
-            };
-
-            _db.Sales.Add(sale);
-
-            await _db.SaveChangesAsync();
-
-            foreach (var line in dto.Items)
-            {
-                _db.SalesItems.Add(new SaleItem
-                {
-                    Id = Guid.NewGuid(),
-                    SaleId = sale.Id,
-                    MenuItemId = line.MenuItemId,
-                    Quantity = line.Quantity,
-                    UnitPrice = line.UnitPrice,
-                    LineTotal = line.Quantity * line.UnitPrice
-                });
-            }
-
-            await _db.SaveChangesAsync();
+            var sale = await _service.CreateAsync(outletId, dto);
 
             return Ok(new
             {
@@ -167,12 +115,17 @@ public class SalesController : ControllerBase
                 message = "Sale recorded successfully."
             });
         }
-        catch (DbUpdateException)
+        catch (UnauthorizedAccessException ex)
         {
-            return BadRequest(new
-            {
-                message = "Database error while saving sale."
-            });
+            return StatusCode(403, new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
         catch (Exception)
         {
@@ -182,25 +135,4 @@ public class SalesController : ControllerBase
             });
         }
     }
-
-    public class CreateSaleDto
-    {
-        public DateOnly SaleDate { get; set; }
-
-        public string Channel { get; set; } = "OUTLET";
-
-        public decimal Discount { get; set; }
-
-        public List<SaleLineDto> Items { get; set; } = [];
-    }
-
-    public class SaleLineDto
-    {
-        public Guid MenuItemId { get; set; }
-
-        public decimal Quantity { get; set; }
-
-        public decimal UnitPrice { get; set; }
-    }
 }
-
