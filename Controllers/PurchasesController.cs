@@ -26,10 +26,10 @@ public class PurchasesController : BaseApiController
     // GET api/purchases
     [HttpGet]
     [Authorize(Policy = "Manager")]
-    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId)
+    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId, [FromQuery] Guid? organizationId)
     {
         Guid? finalOutletId;
-        Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
+        Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
 
         try
         {

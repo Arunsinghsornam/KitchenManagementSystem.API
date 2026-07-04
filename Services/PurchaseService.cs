@@ -87,6 +87,23 @@ public class PurchaseService : IPurchaseService
                 : ((oldStock * oldCost) + (item.Quantity * item.UnitCost)) / newStock;
 
             rawMaterial.CurrentStock = newStock;
+
+            _db.StockLedger.Add(new StockLedger
+            {
+                Id = Guid.NewGuid(),
+                OutletId = outletId,
+                RawMaterialId = item.RawMaterialId,
+                TxnDate = new DateTimeOffset(dto.PurchaseDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                TxnType = "PURCHASE",
+                ReferenceType = "Purchase",
+                ReferenceId = purchase.Id,
+                QuantityIn = item.Quantity,
+                QuantityOut = 0,
+                BalanceAfter = newStock,
+                UnitCost = item.UnitCost,
+                Notes = $"Invoice: {dto.InvoiceNumber}",
+                CreatedAt = DateTimeOffset.UtcNow
+            });
         }
 
         await _db.SaveChangesAsync();

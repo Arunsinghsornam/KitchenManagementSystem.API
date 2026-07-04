@@ -15,11 +15,13 @@ public class AuthController : ControllerBase
 {
     private readonly IAuthService _auth;
     private readonly AppDbContext _db;
+    private readonly IEmailService _emailService;
 
-    public AuthController(IAuthService auth, AppDbContext db)
+    public AuthController(IAuthService auth, AppDbContext db, IEmailService emailService)
     {
         _auth = auth;
         _db = db;
+        _emailService = emailService;
     }
 
  
@@ -37,6 +39,22 @@ public class AuthController : ControllerBase
             return BadRequest(ApiResponse<object>.Fail(
                 "Validation failed",
                 ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
+
+        var user = await _db.Users
+            .Include(u => u.Organization)
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == dto.Email.ToLower());
+
+        if (user != null && user.OrganizationId.HasValue && user.Organization != null)
+        {
+            if (user.Organization.Status == "Pending")
+            {
+                return StatusCode(403, ApiResponse<object>.Fail("Your organization onboarding request is pending approval by the platform administrator."));
+            }
+            if (user.Organization.Status == "Rejected")
+            {
+                return StatusCode(403, ApiResponse<object>.Fail("Your organization onboarding request was rejected."));
+            }
+        }
 
         var result = await _auth.LoginAsync(dto);
 
@@ -139,7 +157,7 @@ public class AuthController : ControllerBase
     /// </summary>
     [HttpPost("register")]
     [AllowAnonymous]
-    public async Task<IActionResult> Register([FromBody] RegisterDto dto)
+    public async Task<IActionResult> Register([FromForm] RegisterDto dto)
     {
         if (!ModelState.IsValid)
             return BadRequest(ApiResponse<object>.Fail(
@@ -147,7 +165,7 @@ public class AuthController : ControllerBase
                 ModelState.Values.SelectMany(v => v.Errors).Select(e => e.ErrorMessage)));
 
         // Check for duplicate email
-        var emailExists = await _db.Users.AnyAsync(u => u.Email == dto.Email);
+        var emailExists = await _db.Users.AnyAsync(u => u.Email.ToLower() == dto.Email.ToLower());
         if (emailExists)
             return Conflict(ApiResponse<object>.Fail("An account with this email already exists."));
 
@@ -160,8 +178,27 @@ public class AuthController : ControllerBase
             {
                 Id = Guid.NewGuid(),
                 Name = dto.OrganizationName,
+                Status = "Pending", // Requires approval by power_admin
                 CreatedAt = DateTimeOffset.UtcNow
             };
+
+            // Save custom logo file if uploaded
+            if (dto.Logo != null && dto.Logo.Length > 0)
+            {
+                var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "logos");
+                if (!Directory.Exists(uploadsFolder))
+                {
+                    Directory.CreateDirectory(uploadsFolder);
+                }
+                var uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(dto.Logo.FileName);
+                var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+                using (var fileStream = new FileStream(filePath, FileMode.Create))
+                {
+                    await dto.Logo.CopyToAsync(fileStream);
+                }
+                org.LogoUrl = $"/uploads/logos/{uniqueFileName}";
+            }
+
             _db.Organizations.Add(org);
 
             // 2. Create initial Outlet
@@ -176,17 +213,17 @@ public class AuthController : ControllerBase
             };
             _db.Outlets.Add(outlet);
 
-            // 3. Create super_admin user
+            // 3. Create inactive super_admin user (active = false until organization is approved)
             var user = new User
             {
                 Id = Guid.NewGuid(),
                 OrganizationId = org.Id,
-                OutletId = null, // super_admin is org-wide, not outlet-scoped
+                OutletId = null,
                 Email = dto.Email,
                 PasswordHash = BCrypt.Net.BCrypt.HashPassword(dto.Password),
                 FullName = dto.FullName,
                 Role = "super_admin",
-                IsActive = true,
+                IsActive = false, // Becomes active when approved
                 CreatedAt = DateTimeOffset.UtcNow
             };
             _db.Users.Add(user);
@@ -194,22 +231,36 @@ public class AuthController : ControllerBase
             await _db.SaveChangesAsync();
             await transaction.CommitAsync();
 
-            // 4. Auto-login — issue JWT
-            var loginResult = await _auth.LoginAsync(new LoginRequestDto
+            // 4. Send onboarding notification email to power admin
+            try
             {
-                Email = dto.Email,
-                Password = dto.Password
-            });
+                var powerAdminEmail = "arunsinghsornam@gmail.com";
+                var onboardingSubject = $"New Onboarding Request: {org.Name}";
+                var onboardingBody = $@"
+                    <h3>New Organization Onboarding Request</h3>
+                    <p><strong>Organization Name:</strong> {org.Name}</p>
+                    <p><strong>Owner Name:</strong> {user.FullName}</p>
+                    <p><strong>Owner Email:</strong> {user.Email}</p>
+                    <p><strong>Initial Outlet Name:</strong> {outlet.Name}</p>
+                    <p>Please log in to the Platform Administration portal to approve or reject this request.</p>";
 
-            return Ok(ApiResponse<LoginResponseDto>.Ok(
-                loginResult!,
-                "Registration successful. You are now logged in."));
+                await _emailService.SendEmailAsync(powerAdminEmail, onboardingSubject, onboardingBody);
+            }
+            catch (Exception ex)
+            {
+                // Log and continue, registration shouldn't fail if notification email fails
+                Console.WriteLine($"[Warning] Failed to send onboarding email notification: {ex.Message}");
+            }
+
+            return Ok(ApiResponse<object>.Ok(
+                new { orgId = org.Id, status = org.Status },
+                "Registration onboarding request submitted successfully. It is pending approval by the platform administrator."));
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             await transaction.RollbackAsync();
             return StatusCode(500, ApiResponse<object>.Fail(
-                "An unexpected error occurred during registration. Please try again."));
+                $"An unexpected error occurred during registration: {ex.Message}"));
         }
     }
 

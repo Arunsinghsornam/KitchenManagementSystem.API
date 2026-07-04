@@ -62,6 +62,8 @@ public class DashboardService : IDashboardService
                      && m.CurrentStock <= m.ReorderLevel)
             .Select(m => new
             {
+                m.Id,
+                m.OutletId,
                 m.Name,
                 m.CurrentStock,
                 m.ReorderLevel,

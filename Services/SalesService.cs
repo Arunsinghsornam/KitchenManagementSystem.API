@@ -121,6 +121,34 @@ public class SalesService : ISalesService
                 UnitPrice = line.UnitPrice,
                 LineTotal = line.Quantity * line.UnitPrice
             });
+
+            var ingredients = await _db.RecipeIngredients
+                .Where(r => r.MenuItemId == line.MenuItemId)
+                .Include(r => r.RawMaterial)
+                .ToListAsync();
+
+            foreach (var ing in ingredients)
+            {
+                var needed = ing.Quantity * line.Quantity;
+                
+                ing.RawMaterial.CurrentStock -= needed;
+
+                _db.StockLedger.Add(new StockLedger
+                {
+                    Id = Guid.NewGuid(),
+                    OutletId = outletId,
+                    RawMaterialId = ing.RawMaterialId,
+                    TxnDate = new DateTimeOffset(dto.SaleDate.ToDateTime(TimeOnly.MinValue), TimeSpan.Zero),
+                    TxnType = "SALE",
+                    ReferenceType = "Sale",
+                    ReferenceId = sale.Id,
+                    QuantityIn = 0,
+                    QuantityOut = needed,
+                    BalanceAfter = ing.RawMaterial.CurrentStock,
+                    Notes = $"Sale of {line.Quantity} units",
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
         }
 
         await _db.SaveChangesAsync();
