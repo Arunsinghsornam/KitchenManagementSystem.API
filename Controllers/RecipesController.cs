@@ -61,6 +61,7 @@ public class RecipesController : BaseApiController
             m.Category,
             m.SellingPrice,
             m.Active,
+            m.ImageUrl,
 
             RecipeCost = m.RecipeIngredients.Sum(r =>
                 r.Quantity * (r.RawMaterial != null ? r.RawMaterial.AverageCost : 0)),
@@ -110,7 +111,8 @@ public class RecipesController : BaseApiController
                 menuItem.Id,
                 menuItem.Name,
                 menuItem.Category,
-                menuItem.SellingPrice
+                menuItem.SellingPrice,
+                menuItem.ImageUrl
             });
         }
         catch (UnauthorizedAccessException ex)
@@ -190,5 +192,31 @@ public class RecipesController : BaseApiController
             return NotFound();
 
         return Ok(new { message = "Recipe archived successfully" });
+    }
+
+    // POST api/recipes/upload
+    [HttpPost("upload")]
+    [Authorize(Policy = "RecipeAccess")]
+    public async Task<IActionResult> UploadImage(IFormFile file)
+    {
+        if (file == null || file.Length == 0)
+            return BadRequest(new { message = "No file uploaded." });
+
+        var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "recipes");
+        if (!Directory.Exists(uploadsFolder))
+        {
+            Directory.CreateDirectory(uploadsFolder);
+        }
+
+        var uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(file.FileName);
+        var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+
+        using (var fileStream = new FileStream(filePath, FileMode.Create))
+        {
+            await file.CopyToAsync(fileStream);
+        }
+
+        var relativeUrl = $"/uploads/recipes/{uniqueFileName}";
+        return Ok(new { imageUrl = $"http://localhost:5253{relativeUrl}" });
     }
 }

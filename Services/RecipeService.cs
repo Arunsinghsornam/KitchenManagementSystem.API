@@ -34,7 +34,8 @@ public class RecipeService : IRecipeService
             Category = dto.Category,
             SellingPrice = dto.SellingPrice,
             Active = true,
-            CreatedAt = DateTimeOffset.UtcNow
+            CreatedAt = DateTimeOffset.UtcNow,
+            ImageUrl = dto.ImageUrl
         };
 
         _db.MenuItems.Add(menuItem);
@@ -63,6 +64,7 @@ public class RecipeService : IRecipeService
         menuItem.Name = dto.Name;
         menuItem.Category = dto.Category;
         menuItem.SellingPrice = dto.SellingPrice;
+        menuItem.ImageUrl = dto.ImageUrl;
 
         var oldIngredients = await _db.RecipeIngredients
             .Where(r => r.MenuItemId == id)

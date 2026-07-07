@@ -7,7 +7,7 @@ namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Policy = "Manager")]
+[Authorize(Policy = "PLAccess")]
 public class PLReportController : BaseApiController
 {
     private readonly IPLReportService _service;

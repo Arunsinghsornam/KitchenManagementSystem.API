@@ -14,7 +14,7 @@ namespace KitchenManagementSystem.API.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-[Authorize(Roles = "power_admin")] // Only Power Admin can manage organizations onboarding
+[Authorize]
 public class OrganizationsController : BaseApiController
 {
     private readonly AppDbContext _db;
@@ -28,6 +28,7 @@ public class OrganizationsController : BaseApiController
 
     // GET: api/organizations
     [HttpGet]
+    [Authorize(Roles = "power_admin")]
     public async Task<IActionResult> GetOrganizations()
     {
         var orgs = await _db.Organizations.OrderByDescending(o => o.CreatedAt).ToListAsync();
@@ -62,6 +63,7 @@ public class OrganizationsController : BaseApiController
 
     // POST: api/organizations/{id}/approve
     [HttpPost("{id:guid}/approve")]
+    [Authorize(Roles = "power_admin")]
     public async Task<IActionResult> Approve(Guid id)
     {
         var org = await _db.Organizations.FindAsync(id);
@@ -112,6 +114,7 @@ public class OrganizationsController : BaseApiController
 
     // POST: api/organizations/{id}/reject
     [HttpPost("{id:guid}/reject")]
+    [Authorize(Roles = "power_admin")]
     public async Task<IActionResult> Reject(Guid id)
     {
         var org = await _db.Organizations.FindAsync(id);
@@ -157,5 +160,78 @@ public class OrganizationsController : BaseApiController
         }
 
         return Ok(ApiResponse<object>.Ok(null!, $"Organization '{org.Name}' rejected."));
+    }
+
+    // GET: api/organizations/profile
+    [HttpGet("profile")]
+    [Authorize(Roles = "super_admin")]
+    public async Task<IActionResult> GetProfile()
+    {
+        var orgId = GetOrganizationId();
+        if (orgId == null || orgId == Guid.Empty)
+        {
+            return BadRequest(ApiResponse<object>.Fail("No organization associated with this user."));
+        }
+
+        var org = await _db.Organizations.FindAsync(orgId);
+        if (org == null)
+        {
+            return NotFound(ApiResponse<object>.Fail("Organization not found."));
+        }
+
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            org.Id,
+            org.Name,
+            org.LogoUrl,
+            org.Status,
+            org.CreatedAt
+        }));
+    }
+
+    // PUT: api/organizations/profile
+    [HttpPut("profile")]
+    [Authorize(Roles = "super_admin")]
+    public async Task<IActionResult> UpdateProfile([FromForm] UpdateOrgProfileDto dto)
+    {
+        var orgId = GetOrganizationId();
+        if (orgId == null || orgId == Guid.Empty)
+        {
+            return BadRequest(ApiResponse<object>.Fail("No organization associated with this user."));
+        }
+
+        var org = await _db.Organizations.FindAsync(orgId);
+        if (org == null)
+        {
+            return NotFound(ApiResponse<object>.Fail("Organization not found."));
+        }
+
+
+        if (dto.Logo != null && dto.Logo.Length > 0)
+        {
+            var uploadsFolder = Path.Combine(Directory.GetCurrentDirectory(), "uploads", "logos");
+            if (!Directory.Exists(uploadsFolder))
+            {
+                Directory.CreateDirectory(uploadsFolder);
+            }
+            var uniqueFileName = Guid.NewGuid().ToString() + "_" + Path.GetFileName(dto.Logo.FileName);
+            var filePath = Path.Combine(uploadsFolder, uniqueFileName);
+            using (var fileStream = new FileStream(filePath, FileMode.Create))
+            {
+                await dto.Logo.CopyToAsync(fileStream);
+            }
+            org.LogoUrl = $"/uploads/logos/{uniqueFileName}";
+        }
+
+        await _db.SaveChangesAsync();
+
+        return Ok(ApiResponse<object>.Ok(new
+        {
+            org.Id,
+            org.Name,
+            org.LogoUrl,
+            org.Status,
+            org.CreatedAt
+        }, "Organization profile updated successfully."));
     }
 }

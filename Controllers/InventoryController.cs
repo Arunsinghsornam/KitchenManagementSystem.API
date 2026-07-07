@@ -6,6 +6,7 @@ using KitchenManagementSystem.API.Services;
 using KitchenManagementSystem.API.Data;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace KitchenManagementSystem.API.Controllers;
 
@@ -190,6 +191,46 @@ public class InventoryController : BaseApiController
         {
             return BadRequest(new { message = ex.Message });
         }
+    }
+
+    // GET api/inventory/{id}/ledger
+    [HttpGet("{id}/ledger")]
+    [Authorize(Policy = "SuperAdmin")]
+    public async Task<IActionResult> GetLedger(Guid id)
+    {
+        var mat = await _service.GetRawMaterialByIdAsync(id);
+        if (mat == null)
+            return NotFound();
+
+        try
+        {
+            if (IsPowerAdmin() || IsSuperAdmin())
+            {
+                await ValidateOutletAccessAsync(mat.OutletId, _db);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            return StatusCode(403, new { message = ex.Message });
+        }
+
+        var entries = await _db.StockLedger
+            .Where(l => l.RawMaterialId == id)
+            .OrderByDescending(l => l.TxnDate)
+            .Select(l => new
+            {
+                l.Id,
+                l.TxnDate,
+                l.TxnType,
+                l.QuantityIn,
+                l.QuantityOut,
+                l.BalanceAfter,
+                l.UnitCost,
+                l.Notes
+            })
+            .ToListAsync();
+
+        return Ok(entries);
     }
 
     // GET api/inventory/categories

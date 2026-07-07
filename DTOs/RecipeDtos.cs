@@ -6,6 +6,7 @@ public class CreateRecipeDto
     public string? Category { get; set; }
     public decimal SellingPrice { get; set; }
     public List<IngredientDto> Ingredients { get; set; } = [];
+    public string? ImageUrl { get; set; }
 }
 
 public class IngredientDto

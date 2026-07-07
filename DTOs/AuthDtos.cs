@@ -107,6 +107,7 @@ public class UserResponseDto
     public Guid? OutletId { get; set; }
     public string? OutletName { get; set; }
     public Guid? OrganizationId { get; set; }
+    public string? OrganizationName { get; set; }
     public bool IsActive { get; set; }
     public DateTimeOffset CreatedAt { get; set; }
 }
