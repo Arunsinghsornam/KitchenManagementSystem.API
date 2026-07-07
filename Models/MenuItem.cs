@@ -1,4 +1,4 @@
-﻿namespace KitchenManagementSystem.API.Models;
+namespace KitchenManagementSystem.API.Models;
 
 public class MenuItem
 {
@@ -9,6 +9,7 @@ public class MenuItem
     public decimal SellingPrice { get; set; }
     public bool Active { get; set; } = true;
     public DateTimeOffset CreatedAt { get; set; }
+    public string? ImageUrl { get; set; }
 
     public Outlet Outlet { get; set; } = null!;
     public ICollection<RecipeIngredient> RecipeIngredients { get; set; } = [];

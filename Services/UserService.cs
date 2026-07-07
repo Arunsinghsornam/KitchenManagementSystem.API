@@ -23,6 +23,7 @@ public class UserService : IUserService
     {
         var users = await _db.Users
             .Include(u => u.Outlet)
+            .Include(u => u.Organization)
             .Where(u =>
                 u.IsActive &&
                 (organizationId == null || u.OrganizationId == organizationId) &&
@@ -42,6 +43,7 @@ public class UserService : IUserService
     public async Task<UserResponseDto?> GetByIdAsync(Guid id)
     {
         var user = await _db.Users.Include(u => u.Outlet)
+                                   .Include(u => u.Organization)
                                    .FirstOrDefaultAsync(u => u.Id == id);
         return user is null ? null : ToDto(user);
     }
@@ -80,8 +82,9 @@ public class UserService : IUserService
         _db.Users.Add(user);
         await _db.SaveChangesAsync();
 
-        // Reload with Outlet navigation for the response DTO
+        // Reload with Outlet and Organization navigation for the response DTO
         await _db.Entry(user).Reference(u => u.Outlet).LoadAsync();
+        await _db.Entry(user).Reference(u => u.Organization).LoadAsync();
         return ToDto(user);
     }
 
@@ -90,6 +93,7 @@ public class UserService : IUserService
     public async Task<UserResponseDto?> UpdateAsync(Guid id, UpdateUserDto dto)
     {
         var user = await _db.Users.Include(u => u.Outlet)
+                                   .Include(u => u.Organization)
                                    .FirstOrDefaultAsync(u => u.Id == id);
         if (user is null) return null;
 
@@ -174,6 +178,7 @@ public class UserService : IUserService
         OutletId   = u.OutletId,
         OutletName = u.Outlet?.Name,
         OrganizationId = u.OrganizationId,
+        OrganizationName = u.Organization?.Name,
         IsActive   = u.IsActive,
         CreatedAt  = u.CreatedAt
     };

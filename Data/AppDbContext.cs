@@ -23,6 +23,9 @@ public class AppDbContext : DbContext
     // Added for Inventory Controller
     public DbSet<StockLedger> StockLedger => Set<StockLedger>();
 
+    public DbSet<Expense> Expenses => Set<Expense>();
+    public DbSet<OtherExpenseItem> OtherExpenseItems => Set<OtherExpenseItem>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -88,5 +91,23 @@ public class AppDbContext : DbContext
 
         // Added for Inventory Controller
         modelBuilder.Entity<StockLedger>().ToTable("StockLedger");
+
+        modelBuilder.Entity<Expense>(b =>
+        {
+            b.ToTable("Expenses");
+            b.HasOne(e => e.Outlet)
+             .WithMany()
+             .HasForeignKey(e => e.OutletId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<OtherExpenseItem>(b =>
+        {
+            b.ToTable("OtherExpenseItems");
+            b.HasOne(o => o.Expense)
+             .WithMany(e => e.OtherExpenses)
+             .HasForeignKey(o => o.ExpenseId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
     }
 }

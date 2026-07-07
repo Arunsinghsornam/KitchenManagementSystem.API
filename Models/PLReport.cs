@@ -19,12 +19,12 @@ public List<MonthlyPLRow> Monthly { get; set; } = new();
     public decimal TotalCogs { get; set; }
 
     public decimal TotalGrossProfit { get; set; }
+    public decimal TotalExpenses { get; set; }
+    public decimal NetProfit { get; set; }
 
     public decimal AvgMarginPct { get; set; }
 
     public int TotalOrders { get; set; }
-
-
 }
 
 public class DailyPLRow
@@ -46,11 +46,12 @@ public string DayName { get; set; } = "";
 
     public decimal GrossProfit { get; set; }
 
+    public decimal Expenses { get; set; }
+    public decimal NetProfit { get; set; }
+
     public decimal GrossMarginPct { get; set; }
 
     public decimal PurchaseSpend { get; set; }
-
-
 }
 
 public class MonthlyPLRow
@@ -74,9 +75,10 @@ public int Month { get; set; }
 
     public decimal GrossProfit { get; set; }
 
+    public decimal Expenses { get; set; }
+    public decimal NetProfit { get; set; }
+
     public decimal GrossMarginPct { get; set; }
-
-
 }
 
 public class ChannelPLRow

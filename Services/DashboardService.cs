@@ -126,6 +126,54 @@ public class DashboardService : IDashboardService
                 })
             .ToListAsync();
 
+        // Sales per outlet (for Super Admin / Power Admin)
+        var outletSales = new List<object>();
+        var lowSalesAlerts = new List<object>();
+
+        if (organizationId.HasValue)
+        {
+            var outlets = await _db.Outlets
+                .Where(o => o.OrganizationId == organizationId.Value && o.Active)
+                .ToListAsync();
+
+            var outletIds = outlets.Select(o => o.Id).ToList();
+
+            var salesByOutlet = await _db.Sales
+                .Where(s => outletIds.Contains(s.OutletId))
+                .GroupBy(s => s.OutletId)
+                .Select(g => new
+                {
+                    OutletId = g.Key,
+                    TotalSales = g.Sum(s => s.Total)
+                })
+                .ToListAsync();
+
+            var salesMap = salesByOutlet.ToDictionary(x => x.OutletId, x => x.TotalSales);
+
+            var outletSalesList = outlets.Select(o => new
+            {
+                OutletId = o.Id,
+                OutletName = o.Name,
+                TotalSales = salesMap.ContainsKey(o.Id) ? salesMap[o.Id] : 0
+            })
+            .OrderBy(x => x.TotalSales) // Ascending order!
+            .ToList();
+
+            outletSales = outletSalesList.Cast<object>().ToList();
+
+            // Low sales alert: threshold is 10,000
+            lowSalesAlerts = outletSalesList
+                .Where(x => x.TotalSales < 10000)
+                .Select(x => new
+                {
+                    x.OutletName,
+                    x.TotalSales,
+                    Message = x.TotalSales == 0 ? "No sales recorded yet!" : $"Low sales performance (Under ₹10,000)"
+                })
+                .Cast<object>()
+                .ToList();
+        }
+
         return new
         {
             todaySales,
@@ -141,7 +189,10 @@ public class DashboardService : IDashboardService
 
             weeklyChart = chart,
 
-            topItems
+            topItems,
+
+            outletSales,
+            lowSalesAlerts
         };
     }
 }

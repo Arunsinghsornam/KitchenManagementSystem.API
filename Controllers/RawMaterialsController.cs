@@ -91,4 +91,31 @@ public class RawMaterialsController : BaseApiController
 
         return Ok(new { message = "Deleted successfully" });
     }
+
+    [HttpPost("{id}/adjust")]
+    public async Task<IActionResult> Adjust(Guid id, [FromBody] KitchenManagementSystem.API.DTOs.StockAdjustmentDto dto)
+    {
+        Guid outletId;
+        if (IsSuperAdmin())
+        {
+            var rawMaterial = await _service.GetRawMaterialByIdAsync(id);
+            if (rawMaterial == null) return NotFound();
+            outletId = rawMaterial.OutletId;
+        }
+        else
+        {
+            outletId = GetOutletId();
+        }
+
+        try
+        {
+            var newStock = await _service.AdjustStockAsync(outletId, id, dto.Quantity, dto.Notes);
+            if (newStock == null) return NotFound();
+            return Ok(new { currentStock = newStock });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
 }
