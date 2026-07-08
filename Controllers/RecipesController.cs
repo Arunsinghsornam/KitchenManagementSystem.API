@@ -17,11 +17,13 @@ public class RecipesController : BaseApiController
 {
     private readonly IRecipeService _service;
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public RecipesController(IRecipeService service, AppDbContext db)
+    public RecipesController(IRecipeService service, AppDbContext db, INotificationService notificationService)
     {
         _service = service;
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET api/recipes
@@ -106,6 +108,12 @@ public class RecipesController : BaseApiController
 
             var menuItem = await _service.CreateAsync(finalOutletId, dto);
 
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                finalOutletId,
+                $"Added a new recipe '{menuItem.Name}' ({menuItem.Category}) with selling price {menuItem.SellingPrice:C}");
+
             return Ok(new
             {
                 menuItem.Id,
@@ -139,22 +147,57 @@ public class RecipesController : BaseApiController
 
         try
         {
-            var menuItem = await _db.MenuItems.FindAsync(id);
+            var menuItem = await _db.MenuItems
+                .Include(m => m.RecipeIngredients)
+                    .ThenInclude(ri => ri.RawMaterial)
+                .FirstOrDefaultAsync(m => m.Id == id);
             if (menuItem == null)
                 return NotFound();
 
-            await ValidateOutletAccessAsync(menuItem.OutletId, _db);
-        }
-        catch (UnauthorizedAccessException ex)
-        {
-            return StatusCode(403, new { message = ex.Message });
-        }
+            var oldName = menuItem.Name;
+            var oldOutletId = menuItem.OutletId;
+            var oldPrice = menuItem.SellingPrice;
+            var oldCost = menuItem.RecipeIngredients.Sum(ri => ri.Quantity * (ri.RawMaterial?.AverageCost ?? 0));
+            var oldIngredients = string.Join(", ", menuItem.RecipeIngredients.Select(ri => $"{ri.RawMaterial?.Name} ({ri.Quantity} {ri.RawMaterial?.Unit})"));
 
-        try
-        {
+            await ValidateOutletAccessAsync(menuItem.OutletId, _db);
+
             var updated = await _service.UpdateAsync(id, dto);
             if (!updated)
                 return NotFound();
+
+            var rawMaterialIds = dto.Ingredients.Select(i => i.RawMaterialId).ToList();
+            var rawMaterials = await _db.RawMaterials
+                .Where(r => rawMaterialIds.Contains(r.Id))
+                .ToDictionaryAsync(r => r.Id);
+
+            var newCost = dto.Ingredients.Sum(i => {
+                if (rawMaterials.TryGetValue(i.RawMaterialId, out var rm)) {
+                    return i.Quantity * rm.AverageCost;
+                }
+                return 0;
+            });
+
+            var newIngredients = string.Join(", ", dto.Ingredients.Select(i => {
+                if (rawMaterials.TryGetValue(i.RawMaterialId, out var rm)) {
+                    return $"{rm.Name} ({i.Quantity} {rm.Unit})";
+                }
+                return string.Empty;
+            }).Where(s => !string.IsNullOrEmpty(s)));
+
+            var messageDetails = new List<string>();
+            if (oldName != dto.Name) messageDetails.Add($"Name: '{oldName}' → '{dto.Name}'");
+            if (oldPrice != dto.SellingPrice) messageDetails.Add($"Price: {oldPrice:C} → {dto.SellingPrice:C}");
+            if (oldCost != newCost) messageDetails.Add($"Cost: {oldCost:C} → {newCost:C}");
+            if (oldIngredients != newIngredients) messageDetails.Add($"Ingredients: [{oldIngredients}] → [{newIngredients}]");
+
+            var detailString = messageDetails.Any() ? " | Changes: " + string.Join(", ", messageDetails) : "";
+
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                oldOutletId,
+                $"Updated recipe '{oldName}' ({dto.Category}){detailString}");
 
             return Ok();
         }
@@ -179,19 +222,32 @@ public class RecipesController : BaseApiController
             if (menuItem == null)
                 return NotFound();
 
+            var menuName = menuItem.Name;
+            var menuOutletId = menuItem.OutletId;
+
             await ValidateOutletAccessAsync(menuItem.OutletId, _db);
+
+            var deleted = await _service.DeleteAsync(id);
+
+            if (!deleted)
+                return NotFound();
+
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                menuOutletId,
+                $"Deleted recipe '{menuName}'");
+
+            return Ok(new { message = "Recipe archived successfully" });
         }
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
         }
-
-        var deleted = await _service.DeleteAsync(id);
-
-        if (!deleted)
-            return NotFound();
-
-        return Ok(new { message = "Recipe archived successfully" });
+        catch (Exception ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
     }
 
     // POST api/recipes/upload

@@ -15,22 +15,25 @@ public class PLReportService : IPLReportService
     }
 
     public async Task<PLReport> GetReport(
-    Guid outletId,
-    DateTime from,
-    DateTime to)
+        Guid? organizationId,
+        Guid? outletId,
+        DateTime from,
+        DateTime to)
     {
         var sales = await _db.Sales
             .Where(s =>
-                s.OutletId == outletId &&
+                (organizationId == null || s.Outlet.OrganizationId == organizationId) &&
+                (outletId == null || s.OutletId == outletId) &&
                 s.SaleDate >= DateOnly.FromDateTime(from) &&
                 s.SaleDate <= DateOnly.FromDateTime(to))
             .ToListAsync();
         var purchases = await _db.Purchases
-    .Where(p =>
-        p.OutletId == outletId &&
-        p.PurchaseDate >= DateOnly.FromDateTime(from) &&
-        p.PurchaseDate <= DateOnly.FromDateTime(to))
-    .ToListAsync();
+            .Where(p =>
+                (organizationId == null || p.Outlet.OrganizationId == organizationId) &&
+                (outletId == null || p.OutletId == outletId) &&
+                p.PurchaseDate >= DateOnly.FromDateTime(from) &&
+                p.PurchaseDate <= DateOnly.FromDateTime(to))
+            .ToListAsync();
 
         var fromDateOnly = DateOnly.FromDateTime(from);
         var toDateOnly = DateOnly.FromDateTime(to);
@@ -39,7 +42,11 @@ public class PLReportService : IPLReportService
 
         var expenses = await _db.Expenses
             .Include(e => e.OtherExpenses)
-            .Where(e => e.OutletId == outletId && e.ExpenseDate >= startOfFromMonth && e.ExpenseDate <= toDateOnly)
+            .Where(e => 
+                (organizationId == null || e.Outlet.OrganizationId == organizationId) &&
+                (outletId == null || e.OutletId == outletId) && 
+                e.ExpenseDate >= startOfFromMonth && 
+                e.ExpenseDate <= toDateOnly)
             .ToListAsync();
 
         var totalPurchaseSpend =

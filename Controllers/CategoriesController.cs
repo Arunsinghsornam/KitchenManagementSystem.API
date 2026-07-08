@@ -17,11 +17,13 @@ public class CategoriesController : BaseApiController
 {
     private readonly ICategoryService _service;
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public CategoriesController(ICategoryService service, AppDbContext db)
+    public CategoriesController(ICategoryService service, AppDbContext db, INotificationService notificationService)
     {
         _service = service;
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET: api/categories
@@ -41,6 +43,13 @@ public class CategoriesController : BaseApiController
         {
             await ValidateOutletAccessAsync(dto.OutletId, _db);
             var category = await _service.CreateAsync(dto);
+            
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                dto.OutletId,
+                $"Added new category '{category.Name}'");
+
             return Ok(category);
         }
         catch (UnauthorizedAccessException ex)
@@ -72,6 +81,12 @@ public class CategoriesController : BaseApiController
             if (category == null)
                 return NotFound();
 
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                dto.OutletId,
+                $"Updated category details for '{category.Name}'");
+
             return Ok(category);
         }
         catch (UnauthorizedAccessException ex)
@@ -98,16 +113,24 @@ public class CategoriesController : BaseApiController
     {
         try
         {
-            // For safety, load category and validate outlet access
             var category = await _db.Categories.FindAsync(id);
-            if (category != null)
-            {
-                await ValidateOutletAccessAsync(category.OutletId, _db);
-            }
+            if (category == null)
+                return NotFound();
+
+            var catName = category.Name;
+            var catOutletId = category.OutletId;
+
+            await ValidateOutletAccessAsync(category.OutletId, _db);
 
             var deleted = await _service.DeleteAsync(id);
             if (!deleted)
                 return NotFound();
+
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                catOutletId,
+                $"Deleted category '{catName}'");
 
             return Ok(new { message = "Category deleted successfully." });
         }

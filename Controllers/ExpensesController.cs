@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using KitchenManagementSystem.API.Data;
 using KitchenManagementSystem.API.DTOs;
 using KitchenManagementSystem.API.Models;
+using KitchenManagementSystem.API.Services;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -17,10 +18,12 @@ namespace KitchenManagementSystem.API.Controllers;
 public class ExpensesController : BaseApiController
 {
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public ExpensesController(AppDbContext db)
+    public ExpensesController(AppDbContext db, INotificationService notificationService)
     {
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET /api/expenses
@@ -163,6 +166,14 @@ public class ExpensesController : BaseApiController
 
         // Reload details for response
         await _db.Entry(expense).Reference(e => e.Outlet).LoadAsync();
+
+        var total = expense.StaffSalary + expense.ShopRent + expense.EbBill + expense.GasBill + expense.MiscExpense + expense.OtherExpenses.Sum(o => o.Amount);
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            expense.OutletId,
+            $"Added new expense of ₹{total:N2} for date {expense.ExpenseDate:yyyy-MM-dd}");
+
         return CreatedAtAction(nameof(GetById), new { id = expense.Id }, ToDto(expense));
     }
 
@@ -192,6 +203,15 @@ public class ExpensesController : BaseApiController
         {
             return StatusCode(403, new { message = ex.Message });
         }
+
+        var oldDate = expense.ExpenseDate;
+        var oldStaffSalary = expense.StaffSalary;
+        var oldShopRent = expense.ShopRent;
+        var oldEbBill = expense.EbBill;
+        var oldGasBill = expense.GasBill;
+        var oldMiscExpense = expense.MiscExpense;
+        var oldOthersSum = expense.OtherExpenses.Sum(o => o.Amount);
+        var oldTotal = oldStaffSalary + oldShopRent + oldEbBill + oldGasBill + oldMiscExpense + oldOthersSum;
 
         expense.ExpenseDate = dto.ExpenseDate;
         expense.StaffSalary = dto.StaffSalary;
@@ -240,6 +260,27 @@ public class ExpensesController : BaseApiController
         }
 
         await _db.Entry(expense).Reference(e => e.Outlet).LoadAsync();
+
+        var newOthersSum = dto.OtherExpenses.Sum(o => o.Amount);
+        var newTotal = dto.StaffSalary + dto.ShopRent + dto.EbBill + dto.GasBill + dto.MiscExpense + newOthersSum;
+
+        var changes = new List<string>();
+        if (oldDate != dto.ExpenseDate) changes.Add($"Date: {oldDate:yyyy-MM-dd} → {dto.ExpenseDate:yyyy-MM-dd}");
+        if (oldStaffSalary != dto.StaffSalary) changes.Add($"Salary: ₹{oldStaffSalary} → ₹{dto.StaffSalary}");
+        if (oldShopRent != dto.ShopRent) changes.Add($"Rent: ₹{oldShopRent} → ₹{dto.ShopRent}");
+        if (oldEbBill != dto.EbBill) changes.Add($"EB: ₹{oldEbBill} → ₹{dto.EbBill}");
+        if (oldGasBill != dto.GasBill) changes.Add($"Gas: ₹{oldGasBill} → ₹{dto.GasBill}");
+        if (oldMiscExpense != dto.MiscExpense) changes.Add($"Misc: ₹{oldMiscExpense} → ₹{dto.MiscExpense}");
+        if (oldOthersSum != newOthersSum) changes.Add($"Others: ₹{oldOthersSum} → ₹{newOthersSum}");
+
+        var changesString = changes.Any() ? " | Changes: " + string.Join(", ", changes) : "";
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            expense.OutletId,
+            $"Updated expense details for date {oldDate:yyyy-MM-dd} (Total: ₹{oldTotal:N2} → ₹{newTotal:N2}){changesString}");
+
         return Ok(ToDto(expense));
     }
 
@@ -264,8 +305,21 @@ public class ExpensesController : BaseApiController
             return StatusCode(403, new { message = ex.Message });
         }
 
+        var expenseDate = expense.ExpenseDate;
+        var expenseOutletId = expense.OutletId;
+
+        await _db.Entry(expense).Collection(e => e.OtherExpenses).LoadAsync();
+        var total = expense.StaffSalary + expense.ShopRent + expense.EbBill + expense.GasBill + expense.MiscExpense + expense.OtherExpenses.Sum(o => o.Amount);
+
         _db.Expenses.Remove(expense);
         await _db.SaveChangesAsync();
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            expenseOutletId,
+            $"Deleted expense of ₹{total:N2} for date {expenseDate:yyyy-MM-dd}");
+
         return Ok(new { message = "Deleted" });
     }
 

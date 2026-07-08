@@ -18,11 +18,13 @@ public class SuppliersController : BaseApiController
 {
     private readonly ISupplierService _service;
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public SuppliersController(ISupplierService service, AppDbContext db)
+    public SuppliersController(ISupplierService service, AppDbContext db, INotificationService notificationService)
     {
         _service = service;
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET api/suppliers
@@ -99,6 +101,13 @@ public class SuppliersController : BaseApiController
             }
 
             var supplier = await _service.CreateAsync(defaultOutletId, dto);
+            
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                defaultOutletId,
+                $"Added new supplier '{supplier.Name}'");
+
             return Ok(new
             {
                 success = true,
@@ -128,6 +137,12 @@ public class SuppliersController : BaseApiController
         if (supplier == null)
             return NotFound(new { success = false, message = "Supplier not found or access denied" });
 
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            supplier.OutletId,
+            $"Updated supplier details for '{supplier.Name}'");
+
         return Ok(new
         {
             success = true,
@@ -143,10 +158,23 @@ public class SuppliersController : BaseApiController
         Guid? orgId = IsPowerAdmin() ? null : GetOrganizationId();
         Guid? outletId = IsPowerAdmin() || IsSuperAdmin() ? null : GetOutletId();
 
+        var existing = await _db.Suppliers.FindAsync(id);
+        if (existing == null)
+            return NotFound(new { success = false, message = "Supplier not found or access denied" });
+
+        var supplierName = existing.Name;
+        var supplierOutletId = existing.OutletId;
+
         var deleted = await _service.DeleteAsync(orgId, outletId, id);
 
         if (!deleted)
             return NotFound(new { success = false, message = "Supplier not found or access denied" });
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            supplierOutletId,
+            $"Deleted supplier '{supplierName}'");
 
         return Ok(new
         {

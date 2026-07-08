@@ -8,6 +8,6 @@ namespace KitchenManagementSystem.API.Services;
 
 public interface IPurchaseService
 {
-    Task<IEnumerable<Purchase>> GetAllAsync(Guid? organizationId, Guid? outletId);
+    Task<IEnumerable<Purchase>> GetAllAsync(Guid? organizationId, Guid? outletId, DateOnly? fromDate = null, DateOnly? toDate = null);
     Task<Purchase> CreateAsync(Guid outletId, CreatePurchaseDto dto);
 }

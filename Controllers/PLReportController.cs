@@ -23,24 +23,38 @@ public class PLReportController : BaseApiController
 
     [HttpGet]
     public async Task<IActionResult> Get(
-        Guid outletId,
-        DateTime dateFrom,
-        DateTime dateTo)
+        [FromQuery] Guid? organizationId,
+        [FromQuery] Guid? outletId,
+        [FromQuery] DateTime dateFrom,
+        [FromQuery] DateTime dateTo)
     {
+        Guid? finalOutletId = outletId;
+        Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
+
         try
         {
-            await ValidateOutletAccessAsync(outletId, _db);
+            if (IsPowerAdmin() || IsSuperAdmin())
+            {
+                if (outletId.HasValue)
+                {
+                    await ValidateOutletAccessAsync(outletId.Value, _db);
+                }
+            }
+            else
+            {
+                finalOutletId = GetOutletId();
+            }
         }
         catch (UnauthorizedAccessException ex)
         {
             return StatusCode(403, new { message = ex.Message });
         }
 
-        var result =
-            await _service.GetReport(
-                outletId,
-                dateFrom,
-                dateTo);
+        var result = await _service.GetReport(
+            orgId,
+            finalOutletId,
+            dateFrom,
+            dateTo);
 
         return Ok(result);
     }
