@@ -17,11 +17,13 @@ public class InventoryController : BaseApiController
 {
     private readonly IInventoryService _service;
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public InventoryController(IInventoryService service, AppDbContext db)
+    public InventoryController(IInventoryService service, AppDbContext db, INotificationService notificationService)
     {
         _service = service;
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET api/inventory — list all raw materials
@@ -96,6 +98,13 @@ public class InventoryController : BaseApiController
         }
 
         var created = await _service.CreateRawMaterialAsync(outletId, material);
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            outletId,
+            $"Added new raw material '{created.Name}' ({created.Code})");
+
         return Ok(created);
     }
 
@@ -122,6 +131,12 @@ public class InventoryController : BaseApiController
         if (result == null)
             return NotFound();
 
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            result.OutletId,
+            $"Updated raw material '{result.Name}' ({result.Code})");
+
         return Ok(result);
     }
 
@@ -130,12 +145,16 @@ public class InventoryController : BaseApiController
     [Authorize(Policy = "InventoryAccess")]
     public async Task<IActionResult> Delete(Guid id)
     {
+        var existing = await _service.GetRawMaterialByIdAsync(id);
+        if (existing == null)
+            return NotFound();
+
+        var matName = existing.Name;
+        var matCode = existing.Code;
+        var matOutletId = existing.OutletId;
+
         try
         {
-            var existing = await _service.GetRawMaterialByIdAsync(id);
-            if (existing == null)
-                return NotFound();
-
             await ValidateOutletAccessAsync(existing.OutletId, _db);
         }
         catch (UnauthorizedAccessException ex)
@@ -147,6 +166,12 @@ public class InventoryController : BaseApiController
 
         if (!deleted)
             return NotFound();
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+            matOutletId,
+            $"Deleted raw material '{matName}' ({matCode})");
 
         return Ok(new { message = "Deleted" });
     }
@@ -184,6 +209,12 @@ public class InventoryController : BaseApiController
 
             if (newStock == null)
                 return NotFound();
+
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                outletId,
+                $"Adjusted stock for '{mat.Name}' by {dto.Quantity:N2} {mat.Unit} (New stock: {newStock:N2} {mat.Unit}). Notes: {dto.Notes}");
 
             return Ok(new { newStock });
         }

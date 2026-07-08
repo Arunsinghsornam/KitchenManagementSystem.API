@@ -11,10 +11,12 @@ namespace KitchenManagementSystem.API.Controllers;
 public class OutletsController : BaseApiController
 {
     private readonly IOutletService _service;
+    private readonly INotificationService _notificationService;
 
-    public OutletsController(IOutletService service)
+    public OutletsController(IOutletService service, INotificationService notificationService)
     {
         _service = service;
+        _notificationService = notificationService;
     }
 
     // GET: api/Outlets
@@ -50,6 +52,13 @@ public class OutletsController : BaseApiController
             outlet.OrganizationId = GetOrganizationId();
         }
         var created = await _service.CreateAsync(outlet);
+        
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            created.OrganizationId,
+            created.Id,
+            $"Added new outlet '{created.Name}'");
+
         return CreatedAtAction(nameof(GetOutlet), new { id = created.Id }, created);
     }
 
@@ -75,6 +84,12 @@ public class OutletsController : BaseApiController
         if (!updated)
             return NotFound();
 
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            existing.OrganizationId,
+            id,
+            $"Updated outlet details for '{updatedOutlet.Name}'");
+
         return NoContent();
     }
 
@@ -93,6 +108,12 @@ public class OutletsController : BaseApiController
 
         if (!deleted)
             return NotFound();
+
+        await _notificationService.AddNotificationAsync(
+            GetUserId(),
+            existing.OrganizationId,
+            id,
+            $"Deleted outlet '{existing.Name}'");
 
         return NoContent();
     }

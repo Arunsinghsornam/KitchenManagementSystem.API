@@ -173,6 +173,30 @@ public class DashboardService : IDashboardService
                 .Cast<object>()
                 .ToList();
         }
+        // Net Revenue calculation (Sales - Purchases - Expenses)
+        var totalSales = await _db.Sales
+            .Where(s => (organizationId == null || s.Outlet.OrganizationId == organizationId) 
+                     && (outletId == null || s.OutletId == outletId))
+            .Select(s => (decimal?)s.Total)
+            .SumAsync() ?? 0;
+
+        var totalPurchases = await _db.Purchases
+            .Where(p => (organizationId == null || p.Outlet.OrganizationId == organizationId) 
+                     && (outletId == null || p.OutletId == outletId))
+            .Select(p => (decimal?)p.Total)
+            .SumAsync() ?? 0;
+
+        var baseExpenses = await _db.Expenses
+            .Where(e => (organizationId == null || e.Outlet.OrganizationId == organizationId) 
+                     && (outletId == null || e.OutletId == outletId))
+            .Select(e => new {
+                TotalBase = e.StaffSalary + e.ShopRent + e.EbBill + e.GasBill + e.MiscExpense,
+                CustomTotal = e.OtherExpenses.Sum(o => (decimal?)o.Amount) ?? 0
+            })
+            .ToListAsync();
+
+        var totalExpenses = baseExpenses.Sum(e => e.TotalBase + e.CustomTotal);
+        var netRevenue = totalSales - totalPurchases - totalExpenses;
 
         return new
         {
@@ -192,7 +216,8 @@ public class DashboardService : IDashboardService
             topItems,
 
             outletSales,
-            lowSalesAlerts
+            lowSalesAlerts,
+            netRevenue
         };
     }
 }

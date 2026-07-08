@@ -25,6 +25,7 @@ public class AppDbContext : DbContext
 
     public DbSet<Expense> Expenses => Set<Expense>();
     public DbSet<OtherExpenseItem> OtherExpenseItems => Set<OtherExpenseItem>();
+    public DbSet<Notification> Notifications => Set<Notification>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -109,5 +110,7 @@ public class AppDbContext : DbContext
              .HasForeignKey(o => o.ExpenseId)
              .OnDelete(DeleteBehavior.Cascade);
         });
+
+        modelBuilder.Entity<Notification>().ToTable("Notifications");
     }
 }

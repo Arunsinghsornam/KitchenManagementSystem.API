@@ -14,12 +14,16 @@ public class PurchaseService : IPurchaseService
         _db = db;
     }
 
-    public async Task<IEnumerable<Purchase>> GetAllAsync(Guid? organizationId, Guid? outletId)
+    public async Task<IEnumerable<Purchase>> GetAllAsync(Guid? organizationId, Guid? outletId, DateOnly? fromDate = null, DateOnly? toDate = null)
     {
         return await _db.Purchases
-            .Where(p => (organizationId == null || p.Outlet.OrganizationId == organizationId)
-                     && (outletId == null || p.OutletId == outletId))
             .Include(p => p.Supplier)
+            .Include(p => p.Items)
+                .ThenInclude(pi => pi.RawMaterial)
+            .Where(p => (organizationId == null || p.Outlet.OrganizationId == organizationId)
+                     && (outletId == null || p.OutletId == outletId)
+                     && (fromDate == null || p.PurchaseDate >= fromDate.Value)
+                     && (toDate == null || p.PurchaseDate <= toDate.Value))
             .OrderByDescending(p => p.PurchaseDate)
             .Take(100)
             .ToListAsync();

@@ -14,11 +14,14 @@ public class SalesService : ISalesService
         _db = db;
     }
 
-    public async Task<IEnumerable<Sale>> GetAllAsync(Guid? organizationId, Guid? outletId)
+    public async Task<IEnumerable<Sale>> GetAllAsync(Guid? organizationId, Guid? outletId, DateOnly? fromDate = null, DateOnly? toDate = null)
     {
         return await _db.Sales
+            .Include(s => s.Items)
             .Where(s => (organizationId == null || s.Outlet.OrganizationId == organizationId)
-                     && (outletId == null || s.OutletId == outletId))
+                     && (outletId == null || s.OutletId == outletId)
+                     && (fromDate == null || s.SaleDate >= fromDate.Value)
+                     && (toDate == null || s.SaleDate <= toDate.Value))
             .OrderByDescending(s => s.SaleDate)
             .Take(100)
             .ToListAsync();

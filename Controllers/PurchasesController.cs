@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Authorization;
 using KitchenManagementSystem.API.DTOs;
 using KitchenManagementSystem.API.Services;
 using KitchenManagementSystem.API.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace KitchenManagementSystem.API.Controllers;
 
@@ -16,17 +17,23 @@ public class PurchasesController : BaseApiController
 {
     private readonly IPurchaseService _service;
     private readonly AppDbContext _db;
+    private readonly INotificationService _notificationService;
 
-    public PurchasesController(IPurchaseService service, AppDbContext db)
+    public PurchasesController(IPurchaseService service, AppDbContext db, INotificationService notificationService)
     {
         _service = service;
         _db = db;
+        _notificationService = notificationService;
     }
 
     // GET api/purchases
     [HttpGet]
     [Authorize(Policy = "Manager")]
-    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId, [FromQuery] Guid? organizationId)
+    public async Task<IActionResult> GetAll(
+        [FromQuery] Guid? outletId, 
+        [FromQuery] Guid? organizationId,
+        [FromQuery] DateOnly? fromDate,
+        [FromQuery] DateOnly? toDate)
     {
         Guid? finalOutletId;
         Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
@@ -51,7 +58,7 @@ public class PurchasesController : BaseApiController
             return StatusCode(403, new { message = ex.Message });
         }
 
-        var purchases = await _service.GetAllAsync(orgId, finalOutletId);
+        var purchases = await _service.GetAllAsync(orgId, finalOutletId, fromDate, toDate);
 
         // Project properties to match original output shape
         var projected = purchases.Select(p => new
@@ -63,7 +70,14 @@ public class PurchasesController : BaseApiController
             p.Subtotal,
             p.GstAmount,
             p.Total,
-            SupplierName = p.Supplier?.Name
+            SupplierName = p.Supplier?.Name,
+            PurchaseItems = p.Items.Select(pi => new
+            {
+                MaterialName = pi.RawMaterial?.Name,
+                pi.Quantity,
+                pi.UnitCost,
+                pi.LineTotal
+            })
         });
 
         return Ok(projected);
@@ -92,6 +106,17 @@ public class PurchasesController : BaseApiController
             }
 
             var purchase = await _service.CreateAsync(outletId, dto);
+
+            var supplierName = await _db.Suppliers
+                .Where(s => s.Id == dto.SupplierId)
+                .Select(s => s.Name)
+                .FirstOrDefaultAsync();
+
+            await _notificationService.AddNotificationAsync(
+                GetUserId(),
+                IsPowerAdmin() ? null : GetOrganizationIdOrNull(),
+                outletId,
+                $"Recorded a new purchase invoice #{dto.InvoiceNumber} from supplier '{supplierName}' for total amount of {purchase.Total:C}");
 
             return Ok(new
             {

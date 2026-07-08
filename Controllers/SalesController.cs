@@ -25,7 +25,11 @@ public class SalesController : BaseApiController
 
     // GET api/sales — list recent sales
     [HttpGet]
-    public async Task<IActionResult> GetAll([FromQuery] Guid? outletId, [FromQuery] Guid? organizationId)
+    public async Task<IActionResult> GetAll(
+        [FromQuery] Guid? outletId, 
+        [FromQuery] Guid? organizationId,
+        [FromQuery] DateOnly? fromDate,
+        [FromQuery] DateOnly? toDate)
     {
         Guid? finalOutletId;
         Guid? orgId = IsPowerAdmin() ? (organizationId ?? null) : GetOrganizationId();
@@ -50,7 +54,7 @@ public class SalesController : BaseApiController
             return StatusCode(403, new { message = ex.Message });
         }
 
-        var sales = await _service.GetAllAsync(orgId, finalOutletId);
+        var sales = await _service.GetAllAsync(orgId, finalOutletId, fromDate, toDate);
 
         var projected = sales.Select(s => new
         {
@@ -60,7 +64,13 @@ public class SalesController : BaseApiController
             s.Channel,
             s.Subtotal,
             s.Discount,
-            s.Total
+            s.Total,
+            SaleItems = s.Items.Select(si => new
+            {
+                si.MenuItemId,
+                si.Quantity,
+                si.UnitPrice
+            })
         });
 
         return Ok(projected);
